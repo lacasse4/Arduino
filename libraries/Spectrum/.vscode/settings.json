@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "*.code-workspace": "cpp",
+        "peak_list.h": "c"
+    }
+}

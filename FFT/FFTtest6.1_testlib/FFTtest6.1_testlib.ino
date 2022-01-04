@@ -80,13 +80,45 @@ const int signalLength = 1024;
 
 void setup()
 {
-  sig = create_signal(signalLength, samplingFrequency, ZERO_PADDING_ENABLED);
   Serial.begin(9600);
   Serial.println("Ready");
+
+  sig = create_signal(signalLength, samplingFrequency, ZERO_PADDING_ENABLED);
+
+  acquire(sig, CHANNEL);
+  double* a = get_signal_array(sig);
+  double pi = 3.1416;
+  for (int i = 0; i < signalLength; i++) {
+    a[i] = 200*sin(i*pi/100) + 100*sin(i*pi/50) + 50*sin(i*pi/25);
+  }
+  
+  Serial.println("Signal");
+  for (int i = 0; i < signalLength; i ++) {
+    printd(a[i]);
+  }
+
+  compute_spectrum(sig);
+  Serial.println("Spectrum");
+  for (int i = 0; i < signalLength; i ++) {
+    printd(a[i]);
+  }
+
+  Serial.println("Peaklist");
+  compute_peak_list(sig, 20, 800);
+  peak_list_t* pl = get_peak_list(sig);
+  for (int i = 0; i < 5; i++) {
+    printPeak(get_peak(pl, i));
+  }
+
+  Serial.println("Fundamental");
+  peak_t fundamental = find_fundamental_frequency(pl);
+  printPeak(fundamental);
+  
 }
 
 void loop()
 {
+  /*
   peak_t fundamental;
 
   // acquire signal from ADC
@@ -102,6 +134,7 @@ void loop()
   fundamental = find_fundamental_frequency(get_peak_list(sig));
 
   displayPeak(fundamental);  
+  */
 }
 
 void displayPeak(peak_t peak) 
@@ -119,5 +152,11 @@ void displayPeak(peak_t peak)
 void printPeak(peak_t peak) {
   char s[100];
   sprintf(s, "peak: %3d, %4.0f, %4.0f", peak.index, peak.frequency, peak.power);
+  Serial.println(s);
+}
+
+void printd(double d) {
+  char s[100];
+  sprintf(s, "%4.1f", d);
   Serial.println(s);
 }

@@ -16,6 +16,11 @@ typedef struct peak {
     int index;            // peak index in signal array
     double frequency;     // peak frequency
     double power;         // peak power
+
+    double p[5];
+    double early_freq;
+    int ispeak;
+    int added;
 } peak_t;
 
 void erase_peak(peak_t* peak);

@@ -9,6 +9,7 @@
  * 
  */
 
+
 #include <stdlib.h>
 #include "spectrum.h"
 #include "peak.h"
@@ -152,11 +153,19 @@ void compute_spectrum(signal_t* signal)
 }
 
 /**
- * @brief convert frequency to array index in spectrum
- * @param frequency frequency to convert in index
+ * @brief convert frequency to spectrum array index
+ * @param frequency frequency to be converted to index
  */
 int frequency_to_index(signal_t* signal, double frequency) {
-    return round(frequency * signal->length / signal->sampling_frequency);
+  return round(frequency * signal->length_with_padding / signal->sampling_frequency);
+}
+
+/**
+ * @brief convert spectrum array index to frequency
+ * @param index index to be converted to a frequency
+ */
+double index_to_frequency(signal_t* signal, double index) {
+  return index * signal->sampling_frequency / signal->length_with_padding;
 }
 
 /**
@@ -182,17 +191,52 @@ void erase_signal_at_peak(signal_t* signal, peak_t* peak)
  * @details (highest peak is at index 0). 
  * @details this function modifies the spectrum data
  */
+
 void compute_peak_list(signal_t* signal, double low_frequency, double high_frequency)
 {
+  peak_t highest;
+  double candidate_frequency;
+  int candidate_index;
+  int low_index;
+  int high_index;
+  int found_index;
+
   erase_peak_list(signal->list);
 
-  // find the PEAK_NUMBER highest peaks and add them to the list
-  for (int i = 0; i < PEAK_NUMBER; i++) {
-    peak_t peak = find_highest_peak(signal, low_frequency, high_frequency);
-    add_peak(signal->list, &peak);
-    erase_signal_at_peak(signal, &peak);
+  highest = find_highest_power(signal, low_frequency, high_frequency);
+  if (highest.power < LOWEST_PEAK_POWER) return;
+  add_peak(signal->list, &highest);
+
+  for (int frequency_divider = 2; frequency_divider <= 4; frequency_divider++) {
+    candidate_frequency = highest.frequency/frequency_divider;
+    candidate_index = frequency_to_index(signal, candidate_frequency);
+    low_index = candidate_index - SEARCH_WINDOW;
+    high_index = candidate_index + SEARCH_WINDOW;
+    found_index = find_peak_index(signal, low_index, high_index);
+    if (found_index != -1) {
+      peak_t candidate_peak = find_precise_peak(signal, found_index);
+      if (candidate_peak.power > highest.power * HIGHEST_RATIO) {
+        add_peak(signal->list, &candidate_peak);
+      }
+    }
   }
 }
+
+int find_peak_index(signal_t* signal, int low_index, int high_index) 
+{
+  int found;
+  for (int i = low_index+2; i <= high_index-2; i++) {
+    found = signal->real[i-2] < signal->real[i-1] &&
+            signal->real[i-1] < signal->real[i] &&
+            signal->real[i]   > signal->real[i+1] &&
+            signal->real[i+1] > signal->real[i+2];
+    if (found) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 
 /**
  * @brief find the highest peak of the spectrum 
@@ -201,7 +245,7 @@ void compute_peak_list(signal_t* signal, double low_frequency, double high_frequ
  * @param high_frequency the stoping frequency of peak search
  * @returns the highest peak of the spectrum
  */
-peak_t find_highest_peak(signal_t* signal, double low_frequency, double high_frequency)
+peak_t find_highest_power(signal_t* signal, double low_frequency, double high_frequency)
 {  
   int low_index = frequency_to_index(signal, low_frequency);
   int high_index = frequency_to_index(signal, high_frequency);
@@ -228,16 +272,17 @@ peak_t find_highest_peak(signal_t* signal, double low_frequency, double high_fre
 peak_t find_precise_peak(signal_t* signal, int index)
 {
   peak_t precise_peak;
+  memset(&precise_peak, 0, sizeof(peak_t));
   double delta;
-  double interpolated_x;
+  double interpolated_frequency;
 
   delta = (signal->real[index-1] - signal->real[index+1]) * 0.5 /
           (signal->real[index-1] - (2.0 * signal->real[index]) + signal->real[index+1]);
 
-  interpolated_x = (index + delta) * signal->sampling_frequency / signal->length_with_padding;
+  interpolated_frequency = index_to_frequency(signal, index + delta);
 
   precise_peak.index = index;
-  precise_peak.frequency = interpolated_x;
+  precise_peak.frequency = interpolated_frequency;
   precise_peak.power = (signal->real[index-1] + (2.0 * signal->real[index]) + signal->real[index+1]) / 4;
 
   return precise_peak;

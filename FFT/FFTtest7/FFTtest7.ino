@@ -1,12 +1,13 @@
 
 /*
- * FFT Test program 6
+ * FFT Test program 7
  * Author: Vincent Lacasse
- * Date: 2021-03-14
+ * Date: 2022-01-07
  * 
  * Runs on Arduino Due
- * Same version as FFT5 but using a C++ library.
- * HT1632 was removed; Frequency is sent to serial output.
+ * Same as FFTtest5
+ *   - HT1632 was removed
+ *   - Signal processing function are now in the 'Spectrum' library
  * 
  * Signal processing summary:
  * - the sound signal is sensed with a wide band (20Hz-20Khz) condenser 
@@ -32,6 +33,12 @@
  * fundamental frequency which is a GDC of higher frequencies.
  * 
  * A fundamental frequency of 0 means that no fundamental was found.
+ * 
+ * 2022-01-08: a bug was fixed in the 'Spectrum' library
+ *        the function frequency_to_index() was fixed and 
+ *        the function index_to_frequency was added.
+ *        FFTtest7 was tested and show robust frequency detection
+ *        int the 30 Hz - 900 Hz range with mic and lp filter
  */
 
 #include <arduinoFFT.h>
@@ -49,7 +56,7 @@
 #define PEAK_NUMBER      5      // number of peaks to find in the spectrum
 #define LOW_PEAK_POWER   1000   // lowest peak power considered in peak search
 #define MAX_FREQUENCY    900    // maximum frequency detected (Hz)
-#define MIN_FREQUENCY    66     // minimum frequency detected (Hz)
+#define MIN_FREQUENCY    30     // minimum frequency detected (Hz)
 #define SMALL_REMAINDER  0.05   // remainder used to validate a GCD 
 
 #define LOOP
@@ -59,13 +66,13 @@
  * the signal sampling frequency must be at least twice as much as the maximum
  * frequency present in the analog signal (as per Nyqvist rate).
  * Here, we use a 4000 Hz sampling frequency. This is 4 times greater that 
- * the analog signal frequency which is limited by the analog low pass filter
+ * the analog signal frequency which is limited by an analog low pass filter
  * with a cut off frequency of 870 Hz
  */
 const double samplingFrequency = 4000.0; // in Hz, must be less than 10000 Hz
 
 /*
- * With a sampling frequency of 4000 Hz and a sample number 1024, the minimum
+ * With a sampling frequency of 4000 Hz and a sample number of 1024, the minimum
  * frequency that can be detected is approximatly 8 Hz. This is low enough 
  * to detect the minimum audible frequency which is approx. 20 Hz
  */
@@ -75,84 +82,48 @@ const int signalLength = 1024;
  * Signal object
  */
 
- signal_t* sig;
-
+signal_t* sig;
 
 void setup()
 {
   Serial.begin(9600);
   Serial.println("Ready");
 
-  sig = create_signal(signalLength, samplingFrequency, ZERO_PADDING_ENABLED);
-
-  acquire(sig, CHANNEL);
-  double* a = get_signal_array(sig);
-  double pi = 3.1416;
-  for (int i = 0; i < signalLength; i++) {
-    a[i] = 200*sin(i*pi/100) + 100*sin(i*pi/50) + 50*sin(i*pi/25);
-  }
-  
-  Serial.println("Signal");
-  for (int i = 0; i < signalLength; i ++) {
-    printd(a[i]);
-  }
-
-  compute_spectrum(sig);
-  Serial.println("Spectrum");
-  for (int i = 0; i < signalLength; i ++) {
-    printd(a[i]);
-  }
-
-  Serial.println("Peaklist");
-  compute_peak_list(sig, 20, 800);
-  peak_list_t* pl = get_peak_list(sig);
-  for (int i = 0; i < 5; i++) {
-    printPeak(get_peak(pl, i));
-  }
-
-  Serial.println("Fundamental");
-  peak_t fundamental = find_fundamental_frequency(pl);
-  printPeak(fundamental);
-  
+  sig = create_signal(signalLength, samplingFrequency, ZERO_PADDING_ENABLED);  
 }
 
 void loop()
 {
-  /*
-  peak_t fundamental;
-
-  // acquire signal from ADC
   acquire(sig, CHANNEL);
-
-  // compute spectrum
   compute_spectrum(sig);
 
-  // compute peak list
+  /*double* real = get_signal_array(sig);
+  for (int i = 0; i < get_length(sig); i++) {
+    printd(real[i]); 
+  }*/
+  
   compute_peak_list(sig, MIN_FREQUENCY, MAX_FREQUENCY);
-
-  // find fundamental frequency  
-  fundamental = find_fundamental_frequency(get_peak_list(sig));
-
-  displayPeak(fundamental);  
-  */
+  peak_list_t* pl = get_peak_list(sig);
+  peak_t fundamental = find_fundamental_frequency(pl);
+  int size = list_size(pl);
+  printFrequency(fundamental);
+  Serial.println();
 }
 
-void displayPeak(peak_t peak) 
+void printFrequency(peak_t peak) 
 {
-    char s[100];
-    sprintf(s, "F: %03.0f  ", peak.frequency); Serial.print(s);
-    Serial.println();
+  char s[100];
+  sprintf(s, "F: %6.2f", peak.frequency);
+  Serial.println(s);
 }
 
-
-/**
- * @brief print peak data (for debbuging purpose)
- * @param peak  the peak to print 
- */
-void printPeak(peak_t peak) {
-  char s[100];
-  sprintf(s, "peak: %3d, %4.0f, %4.0f", peak.index, peak.frequency, peak.power);
+void printPeak(peak_t peak) 
+{
+  char s[200];
+  sprintf(s, "Peak: %3d, %5.1f, %7.1f", peak.index, peak.frequency, peak.power);
   Serial.println(s);
+  /*sprintf(s, "Debug: %1d, %1d, %5.1f, %5.1f, %5.1f, %5.1f, %5.1f, %5.1f", peak.ispeak, peak.added, peak.p[0], peak.p[1], peak.p[2], peak.p[3], peak.p[4], peak.early_freq);
+  Serial.println(s);*/
 }
 
 void printd(double d) {

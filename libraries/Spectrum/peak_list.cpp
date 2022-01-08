@@ -96,61 +96,28 @@ peak_t find_fundamental_frequency(peak_list_t* list)
 {
   peak_t fundamental;
   peak_t not_found;
-  peak_list_t candidate;
-  peak_list_t divider;
-  peak_t highest = get_peak(list, 0);
 
-  erase_peak_list(&candidate);
-  erase_peak_list(&divider);
   erase_peak(&not_found);  // value to test
   
-  if (list_size(list) < PEAK_NUMBER) {
+  if (list_size(list) == 0) {
     return not_found;
   }
 
-  // make sure the highest peak is strong enough.
-  // otherwise, there was not pitch in the sound recorded.
-  if (highest.power < LOWEST_PEAK_POWER) {
-    return not_found;
+  if (list_size(list) == 1) {
+    return get_peak(list, 0);
   }
 
-  // find candidate peaks, that is:
-  // peaks that have a lower frequency than the highest peak
-  for (int i = 1; i < PEAK_NUMBER; i++) {
-    if (get_peak(list, i).frequency < highest.frequency) { 
-      add_peak(&candidate, &list->peak[i]);
-    }
+  if (list_size(list) == 2) {
+    return get_peak(list, 1);
   }
 
-  // if no candidates were found, then the highest peak is the fundamental
-  if (list_size(&candidate) == 0) {
-    return highest;
+  if (list_size(list) == 3) {
+    return get_peak(list, 2);
   }
 
-  // find divider peaks out of the candidate peak list.
-  // a divider peak frequency is a divider of the highest peak's frequency
-  for (int i = 0; i < list_size(&candidate); i++) {
-    peak_t under_test = get_peak(&candidate, i);
-    double div = highest.frequency / under_test.frequency;
-    double remainder = fabs(div - round(div));
-    if (remainder < SMALL_REMAINDER) {
-      add_peak(&divider, &under_test);
-    }
+  if (list_size(list) == 4) {
+    return get_peak(list, 3);
   }
 
-  // if no dividers where found, then the highest peak is the fundamental
-  if (list_size(&divider) == 0) {
-    return highest;
-  }
-
-  // return the divider peak that has the lowest frequency
-  fundamental = get_peak(&divider, 0);
-  for (int i = 1; i < list_size(&divider); i++) {
-    peak_t under_test = get_peak(&divider, i);
-    if (under_test.frequency < fundamental.frequency) {
-      fundamental = under_test;
-    }
-  }
-
-  return fundamental;
+  return not_found;
 }

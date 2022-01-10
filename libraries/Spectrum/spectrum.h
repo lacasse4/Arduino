@@ -23,8 +23,8 @@
 #define ERASER_SIZE           9       // must be an odd number
 #define CYCLES_PER_MHZ        1000000.0
 #define LOWEST_PEAK_POWER     1000.0  // lowest peak power considered in peak search
-#define HIGHEST_RATIO         0.20    // ratio to highest peak power for a peak to be accepted
-#define SEARCH_WINDOW         5
+#define HIGHEST_RATIO         0.40    // ratio to highest peak power for a peak to be accepted
+#define SEARCH_WINDOW         0.07    // defines the frequency search window in peak detection
 
 typedef struct signal signal_t;
 

@@ -4,6 +4,10 @@
 
 using namespace arduino_due::pwm_lib;
 
+/* 
+ * With the pwm_lib library, PERIOD and DUTY 
+ * must be specified in hundredths of microseconds (1e-8 seconds)
+ */
 #define PERIOD (100000000/82)
 #define DUTY   (PERIOD/2)
 

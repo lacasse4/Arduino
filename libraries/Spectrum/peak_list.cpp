@@ -85,13 +85,7 @@ peak_t get_peak(peak_list_t* list, int index)
  * @param list  the peak list into which the fundamental is sought
  * @returns  the peak containing the frequency, or index = -1 if not found  
  */
-/*
-"The fundamental frequency of a signal is the greatest common divisor (GCD) 
-of all the frequency components contained in a signal, and, equivalently, 
-the fundamental period is the least common multiple (LCM) of all individual 
-periods of the components." 
-http://fourier.eng.hmc.edu/e59/lectures/Fundamental_Frequency/node1.html
-*/
+
 peak_t find_fundamental_frequency(peak_list_t* list)
 {
   peak_t fundamental;

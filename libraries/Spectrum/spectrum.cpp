@@ -16,6 +16,12 @@
 #include "peak_list.h"
 
 /*
+extern char ttt[3][100];
+extern char uuu[3][100];
+int uuu_c;
+*/
+
+/*
  * Signal structure
  */
 struct signal {
@@ -191,55 +197,73 @@ void erase_signal_at_peak(signal_t* signal, peak_t* peak)
  * @details (highest peak is at index 0). 
  * @details this function modifies the spectrum data
  */
+/*
+"The fundamental frequency of a signal is the greatest common divisor (GCD) 
+of all the frequency components contained in a signal, and, equivalently, 
+the fundamental period is the least common multiple (LCM) of all individual 
+periods of the components." 
+http://fourier.eng.hmc.edu/e59/lectures/Fundamental_Frequency/node1.html
+*/
+
+#include <stdio.h>
 
 void compute_peak_list(signal_t* signal, double low_frequency, double high_frequency)
 {
   peak_t highest;
   double candidate_frequency;
-  int candidate_index;
-  int low_index;
-  int high_index;
-  int found_index;
+  double candidate_low;
+  double candidate_high;
+  peak_t peak_found;
+
+  /*
+  int i = 0;
+
+  strcpy(ttt[0], "null");
+  strcpy(ttt[1], "null");
+  strcpy(ttt[2], "null");
+
+  strcpy(uuu[0], "null");
+  strcpy(uuu[1], "null");
+  strcpy(uuu[2], "null");
+  uuu_c = 0;
+  */
 
   erase_peak_list(signal->list);
 
+  // find highest peak in entire frequency range
   highest = find_highest_power(signal, low_frequency, high_frequency);
   if (highest.power < LOWEST_PEAK_POWER) return;
   add_peak(signal->list, &highest);
 
+  // check if peaks exist in the spectrum at lower frequencies that
+  // are exact dividers of highest peak's frequency
   for (int frequency_divider = 2; frequency_divider <= 4; frequency_divider++) {
-    candidate_frequency = highest.frequency/frequency_divider;
-    candidate_index = frequency_to_index(signal, candidate_frequency);
-    low_index = candidate_index - SEARCH_WINDOW;
-    high_index = candidate_index + SEARCH_WINDOW;
-    found_index = find_peak_index(signal, low_index, high_index);
-    if (found_index != -1) {
-      peak_t candidate_peak = find_precise_peak(signal, found_index);
-      if (candidate_peak.power > highest.power * HIGHEST_RATIO) {
-        add_peak(signal->list, &candidate_peak);
+
+    // candidate frequency is an exact divider of the highest peak's frequency
+    candidate_frequency = highest.frequency / frequency_divider;
+    if (candidate_frequency < low_frequency) return;
+
+    // define a search window where the peak will be sought
+    candidate_low = candidate_frequency - candidate_frequency * SEARCH_WINDOW;
+    candidate_high = candidate_frequency + candidate_frequency * SEARCH_WINDOW;
+    peak_found = find_highest_power(signal, candidate_low, candidate_high);
+
+    // if a peak was found in the search window, make sure its power is sufficient
+    if (peak_found.index != -1) {
+      if (peak_found.power > highest.power * HIGHEST_RATIO) {
+        add_peak(signal->list, &peak_found);
       }
     }
+    /*
+    sprintf(ttt[i++], "cf = %lf, pfi = %d, pfp= %lf, hp = %lf", 
+        candidate_frequency, peak_found.index, peak_found.power, highest.power);
+    */
   }
-}
-
-int find_peak_index(signal_t* signal, int low_index, int high_index) 
-{
-  int found;
-  for (int i = low_index+2; i <= high_index-2; i++) {
-    found = signal->real[i-2] < signal->real[i-1] &&
-            signal->real[i-1] < signal->real[i] &&
-            signal->real[i]   > signal->real[i+1] &&
-            signal->real[i+1] > signal->real[i+2];
-    if (found) {
-      return i;
-    }
-  }
-  return -1;
 }
 
 
 /**
- * @brief find the highest peak of the spectrum 
+ * @brief find the highest peak of spectrum in specified frequency range
  * @param signal struct containing signal info (the spectrum)
  * @param low_frequency the starting frequency of peak search
  * @param high_frequency the stoping frequency of peak search
@@ -247,18 +271,44 @@ int find_peak_index(signal_t* signal, int low_index, int high_index)
  */
 peak_t find_highest_power(signal_t* signal, double low_frequency, double high_frequency)
 {  
-  int low_index = frequency_to_index(signal, low_frequency);
-  int high_index = frequency_to_index(signal, high_frequency);
-  int max_index = low_index;
+  int low_index;
+  int high_index;
+  int max_index;
+  double max_power;
+  int is_max;
 
-  double max_power = signal->real[low_index];
+  // to be returned if a peak is not found
+  peak_t not_found;
+  erase_peak(&not_found);
 
-  for (int i = low_index + 1; i <= high_index; i++) {
+  low_index = frequency_to_index(signal, low_frequency);
+  if (low_index <= 0) return not_found;
+
+  high_index = frequency_to_index(signal, high_frequency);
+  if (high_index >= signal->length-1) return not_found;
+
+  // find max peak in specified frequency range
+  max_index = low_index;
+  max_power = signal->real[low_index];
+  for (int i = low_index; i <= high_index; i++) {
     if (max_power < signal->real[i]) {
       max_power = signal->real[i]; 
       max_index = i;
     }
   }
+
+  /*
+  sprintf(uuu[uuu_c++], "li = %d, hi = %d, mi = %d", low_index, high_index, max_index);
+  */
+
+  // there is no peak if max_index is a boundary value
+  if (max_index == low_index) return not_found;
+  if (max_index == high_index) return not_found;
+
+  // power at max_index must be surrounded by lower power values
+  is_max = signal->real[max_index] > signal->real[max_index-1] &&
+           signal->real[max_index] > signal->real[max_index+1];
+  if (!is_max) return not_found;
 
   return find_precise_peak(signal, max_index);  
 }
@@ -272,7 +322,6 @@ peak_t find_highest_power(signal_t* signal, double low_frequency, double high_fr
 peak_t find_precise_peak(signal_t* signal, int index)
 {
   peak_t precise_peak;
-  memset(&precise_peak, 0, sizeof(peak_t));
   double delta;
   double interpolated_frequency;
 

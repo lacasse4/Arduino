@@ -55,7 +55,7 @@ static uint8_t *msg_ptr;
 static cmd_t *cmd_tbl_list, *cmd_tbl;
 
 // text strings for command prompt (stored in flash)
-const char cmd_prompt[] PROGMEM = "CMD >> ";
+const char cmd_prompt[] PROGMEM = "CMD>> ";
 const char cmd_unrecog[] PROGMEM = "CMD: Commande non reconnue.";
 
 static Stream* stream;
@@ -139,6 +139,9 @@ void cmd_parse(char *cmd)
 void cmd_handler()
 {
     char c = stream->read();
+
+    // VL: make case insensitive
+    c = toupper(c);
 
     switch (c)
     {

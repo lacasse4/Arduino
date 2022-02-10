@@ -16,6 +16,7 @@
  * Version 2 (2022-01-11):
  * - la commande DUTY a été ajoutée afin de pouvoir ajuster l'intensité
  * - les commandes peuvent être entrées en minuscules
+ * 
  */
 
 #include <PWM.h>  // PWM Frequency library available at https://code.google.com/archive/p/arduino-pwm-frequency-library/downloads
@@ -28,7 +29,7 @@
 #define MIN_TEMPS    0          // temps mininim pour la rampe (ms)
 #define MAX_TEMPS    60000      // temps maximum pour la rampe (ms)
 #define MIN_DUTY     0          // duty cycle pour le OFF
-#define MAX_DUTY     50         // duty cycle max pour le ON
+#define MAX_DUTY     100        // duty cycle max pour le ON
 
 #define ERR_NARG          1
 #define ERR_CANAL         2
@@ -76,7 +77,7 @@ void setup() {
   cmdAdd("FIN", setFinCmd);
   cmdAdd("INIT", initCmd);
   cmdAdd("DUTY", setDutyCmd);
-  cmdAdd("HELP", helpCmd);
+  cmdAdd("AIDE", helpCmd);
 }
 
 void help() {
@@ -92,7 +93,7 @@ void help() {
   Serial.println(" FIN <canal> <temps>   : ajuste la rampe de fin du canal specifie");
   Serial.println(" INIT                  : retour à la configuration de demarrage");
   Serial.println(" DUTY <canal> <duty>   : ajuste l'intensite maximum du canal"); 
-  Serial.println(" HELP                  : imprime ce message");
+  Serial.println(" AIDE                  : imprime ce message");
   Serial.println();
   Serial.println("Parametres:");
   Serial.println(" <canal>                : canal = 1 ou 2");

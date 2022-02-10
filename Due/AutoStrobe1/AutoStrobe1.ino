@@ -101,8 +101,17 @@ void setup()
 void loop()
 {
   int size;
+
+//  unsigned long t1 = millis();
   acquire(sig, CHANNEL);
+//  unsigned long t2 = millis();
   compute_spectrum(sig);
+//  unsigned long t3 = millis();
+
+//  double acquire_time = (t2 - t1)/1000.0;
+//  double compute_time = (t3 - t2)/1000.0;
+//  Serial.print("\nAcquire time = "); printd(acquire_time);
+//  Serial.print("Compute time = "); printd(compute_time);
 
   compute_peak_list(sig, MIN_FREQUENCY, MAX_FREQUENCY);
   peak_list_t* pl = get_peak_list(sig);
@@ -181,7 +190,7 @@ void printPeak(peak_t peak)
 
 void printd(double d) {
   char s[100];
-  sprintf(s, "%4.1f", d);
+  sprintf(s, "%4.2f", d);
   Serial.println(s);
 }
 

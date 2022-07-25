@@ -36,6 +36,8 @@ struct signal {
     double* real;               // signal array (real part)
     double* imag;               // signal array (imaginary part)
     peak_list_t* list;          // spectrum's peak list
+
+    int index;                  // index of next sample to acquire
 };
 
 /**
@@ -72,6 +74,8 @@ signal_t* create_signal(int length, double sampling_frequency, int zero_padding_
     return NULL;
   }
 
+  erase_signal(signal);
+
   return signal;
 }
 
@@ -101,7 +105,7 @@ peak_list_t* get_peak_list(signal_t* signal)    { return signal->list; }
  * @param removeBias bias is removed after data aquisition if true
  * @details signal is filled with 'length' samples obtained from the ADC CHANNEL
  */
-void acquire(signal_t* signal, int channel) 
+void acquire(signal_t* signal, int channel, int removeBias) 
 {
   unsigned long microseconds;
 
@@ -115,7 +119,28 @@ void acquire(signal_t* signal, int channel)
       microseconds += signal->sampling_period;
   }
 
-  remove_bias(signal);
+  if (removeBias) {
+    remove_bias(signal);
+  }
+}
+
+/**
+ * @brief add a sample to the real signal buffer and increment acquistion index
+ * @param sample sample to be added to the real buffer 
+ */
+
+void add_sample(signal_t* signal, int sample) {
+  if (signal->index < signal->length) {
+    signal->real[signal->index++];
+  }
+}
+
+/**
+ * @brief return true if the 'real' buffer is full.
+ */
+
+int is_buffer_full(signal_t* signal) {
+  return signal->index >= signal->length;
 }
 
 /**
@@ -350,6 +375,16 @@ void erase_array(double *array, int length)
   }
 }
 
+/**
+ * @brief set signal (real & imag) and peal list values to 0.0 
+ * @param signal struct containing signal info (the spectrum)
+ */
+void erase_signal(signal_t* signal) {
+  signal->index = 0;
+  erase_array(signal->real, signal->length_with_padding);
+  erase_array(signal->imag, signal->length_with_padding);
+  erase_peak_list(signal->list);
+}
 
 /**
  * @brief copy scr array to dst 

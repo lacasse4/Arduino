@@ -1,23 +1,29 @@
 
 /*
- * AutoStrobe 1
+ * AutoStrobe 2
  * Author: Vincent Lacasse
- * Date: 2022-01-09
+ * Date: 2022-07-25
  * 
  * Runs on Arduino Due
  * 
- * Spinoff of FFTtest7 that finds an audio signal fundamental frequency (robust)
+ * Finds an audio signal fundamental frequency
+ * Updated from AutoStrobe 1 following construction of hardware prototype
  * Additions:
- *   - drives 2 PWM channels with a frequency slighty lower than the audio signal
- *      * channel 0 is on Due pin 35
- *      * channel 1 is on Due pin 36
+ *   - data acquisition is driven by a timer interrupt
+ *   - drives 3 PWM channels with a frequency slighty lower than the audio signal
+ *      * channel Red is on Due pin 35
+ *      * channel Green is on Due pin 37
+ *      * channel Blue is on Due pin 39
+ *    - drives 3 on/off led as signal power vu-meter
+ *    - drives 1 on/off led as clipping signal
  */
 
-#include <arduinoFFT.h>
+// #include <arduinoFFT.h>
 #include <spectrum.h>
 #include <peak.h>
 #include <peak_list.h>
 #include <pwm_lib.h>
+#include <DueTimer.h>
 
 /*
  * Signal processing defines
@@ -32,6 +38,8 @@
 #define INIT_PERIOD     (PWM_MULTIPLIER/INIT_FREQUENCY)
 #define DUTY_FACTOR      0.25
 #define INIT_DUTY       (INIT_PERIOD*DUTY_FACTOR)
+
+#define ALPHA           0.01
 
 /* 
  *  Frequency offest between fundamental frequency found in sound input and  
@@ -73,9 +81,14 @@ const double samplingFrequency = 4000.0; // in Hz, must be less than 10000 Hz
 const int signalLength = 1024;
 
 /*
- * Signal object
+ * Signal objects
+ * two channels are required. One signal is acquired will the other one is processed
  */
-signal_t* sig;
+int current_sample = 0;
+int sample_index = 0;
+int acquisition_channel = 0;
+int processing_channel = 1;
+signal_t* sig[2];
 
 /*
  * PWM
@@ -83,8 +96,12 @@ signal_t* sig;
 using namespace arduino_due::pwm_lib;
 pwm<pwm_pin::PWMH0_PC3> pwm_red;   //pwm_pin35;
 pwm<pwm_pin::PWMH1_PC5> pwm_green; //pwm_pin37;
-pwm<pwm_pin::PWMH2_PC7> pwm_blue;  //pwm_pin35;
+pwm<pwm_pin::PWMH2_PC7> pwm_blue;  //pwm_pin39;
 
+/*
+ * Alpha filter
+ */
+double smooth = 0.0;
 
 /* for debugging
 char ttt[3][100];
@@ -94,49 +111,112 @@ char uuu[3][100];
 /*
  * Other global variables
  */
-int status;
+int alive;
 int counter;
 uint32_t period;
 uint32_t duty;
 uint32_t trans_duty;
 
+void acquisition_handler(void) {
+
+  // disable interrupts
+  noInterrupts();
+  
+  current_sample = analogRead(CHANNEL);
+  add_sample(sig[acquisition_channel], current_sample);
+
+  // enable interrupts
+  interrupts();
+}
+
+
+
 void setup()
 {
   Serial.begin(9600);
-  Serial.println("AutoStrobe1");
+  Serial.println("AutoStrobe2");
 
+  pinMode(LED_BUILTIN, OUTPUT); digitalWrite(LED_BUILTIN, 0);
+  pinMode(PIN_POWER_1, OUTPUT); digitalWrite(PIN_POWER_1, 0);
+  pinMode(PIN_POWER_2, OUTPUT); digitalWrite(PIN_POWER_2, 0);
+  pinMode(PIN_POWER_3, OUTPUT); digitalWrite(PIN_POWER_3, 0);
+  pinMode(PIN_CLIP   , OUTPUT); digitalWrite(PIN_CLIP   , 0);
+
+  alive      = 0;
   counter    = 0;
   period     = round(INIT_PERIOD);
   duty       = round(INIT_DUTY); 
   trans_duty = round(INIT_DUTY);
 
-  sig = create_signal(signalLength, samplingFrequency, ZERO_PADDING_ENABLED);  
-  pwm_red.start(period, duty);
-  pwm_green.start(period, duty);
-  pwm_blue.start(period, duty);
+  // create 2 signal channels 
+  sig[0] = create_signal(signalLength, samplingFrequency, ZERO_PADDING_ENABLED);  
+  sig[1] = create_signal(signalLength, samplingFrequency, ZERO_PADDING_ENABLED);  
+
+  // start RBG PWM
+  led_start(period, duty);
+
+  // start signal acquisition
+  Timer3.attachInterrupt(acquisition_handler);
+  Timer3.setFrequency(samplingFrequency); 
+  Timer3.start();
 }
 
 void loop()
 {
-  int size;
+  int pl_size;
+  int is_full;
+  int sample;
 
-  // acquire signal
-  acquire(sig, CHANNEL);
+  // get buffer status (within mutex)
+  noInterrupts();
+    is_full = is_buffer_full(sig[acquisition_channel]);
+    sample = current_sample;
+  interrupts();
 
+  // alpha filter for vu meter
+  smooth = smooth * (1.0 - ALPHA) + abs(sample-512) * ALPHA;
+  display_vu_meter(smooth);
+
+  // check if data acquisition has completed
+  if (!is_full) {
+    return;
+  }
+
+  /*
+   * The acquistion buffer is full.  Process the signal.
+   */
+
+  // enter critical zone (mutex with isr)
+  noInterrupts();
+
+    // swap acquisition channel
+    int temp = acquisition_channel;
+    acquisition_channel = processing_channel;
+    processing_channel = temp;
+
+    // get ready for the next acquistion
+    erase_signal(sig[acquisition_channel]);
+
+  // exit critical zone
+  interrupts();
+
+  // flash LED_BUILTIN to show the program is running.
+  digitalWrite(LED_BUILTIN, alive);
+  alive = !alive;
 
   // compute spectrum using a FFT
-  compute_spectrum(sig);
+  compute_spectrum(sig[processing_channel]);
 
   // compute the peak list
-  compute_peak_list(sig, MIN_FREQUENCY, MAX_FREQUENCY);
-  peak_list_t* pl = get_peak_list(sig);
+  compute_peak_list(sig[processing_channel], MIN_FREQUENCY, MAX_FREQUENCY);
+  peak_list_t* pl = get_peak_list(sig[processing_channel]);
   peak_t fundamental = find_fundamental_frequency(pl);
 
-  size = list_size(pl);
-  if (size == 0) {        // no fundamental found, lights off gradually
+  pl_size = list_size(pl);
+  if (pl_size == 0) {        // no fundamental found, lights off gradually
     if (counter >= CONTINUITY_CYCLES + TAPEROFF_CYCLES) {
       trans_duty = 0;
-      pwm_pin35.stop();
+      led_stop();
     }
     else {
       counter++;
@@ -145,7 +225,7 @@ void loop()
         trans_duty = trans_duty > duty ? 0 : trans_duty;  // make sure there no overflow.
       }
     }
-    status = pwm_pin35.set_duty(trans_duty);
+    led_set_duty(trans_duty);
   } 
   else {
     counter = 0;
@@ -153,8 +233,8 @@ void loop()
     duty       = round(period * DUTY_FACTOR);  
     trans_duty = duty;       
 
-    pwm_pin35.stop();
-    pwm_pin35.start(period, duty);
+    led_stop();
+    led_start(period, duty);
   }
 
   printFrequency(fundamental);
@@ -197,12 +277,65 @@ void printd(double d) {
   Serial.println(s);
 }
 
-void printSignal() {
+void printSignal(int index) {
   char s[100];
-  double *a = get_signal_array(sig);
-  int len = get_length(sig);
+  double *a = get_signal_array(sig[index]);
+  int len = get_length(sig[index]);
   for (int i = 0; i < len; i++) {
     sprintf(s, "%4d %5.1f", i, a[i]);
     Serial.println(s);
+  }
+}
+
+void led_start(uint32_t period, uint32_t duty) {
+  pwm_red.start(period, duty);
+  pwm_green.start(period, duty);
+  pwm_blue.start(period, duty);  
+}
+
+void led_stop() {
+  pwm_red.stop();
+  pwm_green.stop();
+  pwm_blue.stop();
+}
+
+void led_set_duty(uint32_t duty) {
+  pwm_red.set_duty(duty);
+  pwm_green.set_duty(duty);
+  pwm_blue.set_duty(duty);
+}
+
+void display_vu_meter(double smooth) {
+  if (smooth < 50) {
+     digitalWrite(PIN_POWER_1, 0);
+     digitalWrite(PIN_POWER_2, 0);
+     digitalWrite(PIN_POWER_3, 0);
+     digitalWrite(PIN_CLIP   , 0);
+  }
+  else if (smooth < 150) {
+     digitalWrite(PIN_POWER_1, 1);
+     digitalWrite(PIN_POWER_2, 0);
+     digitalWrite(PIN_POWER_3, 0);
+     digitalWrite(PIN_CLIP   , 0);
+    
+  }
+  else if (smooth < 300) {
+     digitalWrite(PIN_POWER_1, 1);
+     digitalWrite(PIN_POWER_2, 1);
+     digitalWrite(PIN_POWER_3, 0);
+     digitalWrite(PIN_CLIP   , 0);
+    
+  }
+  else if (smooth < 450) {
+     digitalWrite(PIN_POWER_1, 1);
+     digitalWrite(PIN_POWER_2, 1);
+     digitalWrite(PIN_POWER_3, 1);
+     digitalWrite(PIN_CLIP   , 0);    
+  }
+  else {
+     digitalWrite(PIN_POWER_1, 1);
+     digitalWrite(PIN_POWER_2, 1);
+     digitalWrite(PIN_POWER_3, 1);
+     digitalWrite(PIN_CLIP,    1);
   }
 }

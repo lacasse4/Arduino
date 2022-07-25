@@ -13,10 +13,9 @@
 #ifndef _SPECTRUM_H
 #define _SPECTRUM_H
 
-#include "spectrum.h"
+#include "arduinoFFT.h"
 #include "peak_list.h"
 #include "peak.h"
-#include "arduinoFFT.h"
 
 #define ZERO_PADDING_ENABLED  1
 #define ZERO_PADDING_DISABLED 0
@@ -40,7 +39,10 @@ peak_list_t* get_peak_list(signal_t* signal);
 
 void set_window_type(signal_t* signal, unsigned char window_type);
   
-void acquire(signal_t* signal, int channel);
+void acquire(signal_t* signal, int channel, int removeBias);
+void add_sample(signal_t*, int sample);
+int is_buffer_full(signal_t*);
+
 void compute_spectrum(signal_t* signal);
 int frequency_to_index(signal_t* signal, double frequency);
 double index_to_frequency(signal_t* signal, double index);
@@ -55,6 +57,7 @@ peak_t find_precise_peak(signal_t* signal, int index);
 int find_peak_index(signal_t* signal, int low_index, int high_index); 
 
 void erase_array(double *array, int length);
+void erase_signal(signal_t* signal);
 void copy_array(double *dst, double* src, int length);
 
 #endif

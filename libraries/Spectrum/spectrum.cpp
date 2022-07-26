@@ -9,6 +9,10 @@
  * 
  */
 
+/*
+ * Uses FFT algorithms published at https://github.com/kosme/arduinoFFT
+ * that uses the GNU General Public License v3.0
+ */
 
 #include <stdlib.h>
 #include "spectrum.h"
@@ -18,7 +22,6 @@
 /*
 extern char ttt[3][100];
 extern char uuu[3][100];
-int uuu_c;
 */
 
 /*

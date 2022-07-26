@@ -131,7 +131,7 @@ void acquire(signal_t* signal, int channel, int removeBias)
 
 void add_sample(signal_t* signal, int sample) {
   if (signal->index < signal->length) {
-    signal->real[signal->index++];
+    signal->real[signal->index++] = sample;
   }
 }
 

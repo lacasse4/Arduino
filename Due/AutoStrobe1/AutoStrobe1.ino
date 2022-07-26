@@ -103,7 +103,7 @@ void loop()
   int size;
 
 //  unsigned long t1 = millis();
-  acquire(sig, CHANNEL);
+  acquire(sig, CHANNEL, 1);
 //  unsigned long t2 = millis();
   compute_spectrum(sig);
 //  unsigned long t3 = millis();

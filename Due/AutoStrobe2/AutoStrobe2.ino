@@ -134,7 +134,7 @@ void acquisition_handler(void) {
 void setup()
 {
   Serial.begin(9600);
-  Serial.println("AutoStrobe2");
+  Serial.println("AutoStrobe2\n");
 
   pinMode(LED_BUILTIN, OUTPUT); digitalWrite(LED_BUILTIN, 0);
   pinMode(PIN_POWER_1, OUTPUT); digitalWrite(PIN_POWER_1, 0);

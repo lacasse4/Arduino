@@ -47,7 +47,7 @@
 #define PWM_MULTIPLIER    100000000    // hundredths of microseconds (1e-8 seconds)
 #define MAX_DUTY          0.5          // Max duty cycle in % (max LED intensity)
 #define RAMP_UP_TIME      2.0          // seconds from no LED intensity to max intensity 
-#define RAMP_DN_TIME      2.0          // seconds from max LED intensity to no intensity
+#define RAMP_DN_TIME      4.0          // seconds from max LED intensity to no intensity
 
 #define UPDATE_INTERVAL   50           // interval between LED intensity updates in milliseconds
 #define RAMP_UP_TIME_MS   (RAMP_UP_TIME*1000)
@@ -115,11 +115,12 @@ const int signalLength = 1024;
  * these variables must be placed in a 'critical zone' (by disabling 
  * interrupts)
  */
-int sample = 0;
-int sample_index = 0;
-int acquisition_channel = 0;
-int processing_channel = 1;
+
 signal_t* sig[2];
+volatile int acquisition_channel = 0;
+volatile int processing_channel = 1;
+volatile int npeaks = 0;
+volatile double frequency;
 
 /*
  * PWM objects to drive RGB LEDs
@@ -132,7 +133,7 @@ pwm<pwm_pin::PWMH2_PC7> pwm_blue;  //pwm_pin39;
 /*
  * Alpha filter IIR tap
  */
-double smooth = 0.0;
+volatile double smooth = 0.0;
 
 /* for debugging
 char ttt[3][100];
@@ -149,6 +150,8 @@ int alive = 0;              // To blink an 'Alive' signal on BUILTIN_LED
  * Data acquistion interrupt handler
  */
 void acquisition_handler(void) {
+  
+  int sample;
 
   noInterrupts();
   
@@ -157,6 +160,13 @@ void acquisition_handler(void) {
   smooth = smooth * (1.0 - ALPHA) + abs(sample-512) * ALPHA;
 
   interrupts();
+}
+
+/*
+ * LED display interrupt handler
+ */
+void led_display_handler(void) {
+  drivePWM(npeaks, frequency);
 }
 
 /*
@@ -184,6 +194,10 @@ void setup()
   Timer3.attachInterrupt(acquisition_handler);
   Timer3.setFrequency(samplingFrequency); 
   Timer3.start();
+
+  Timer4.attachInterrupt(led_display_handler);
+  Timer4.setPeriod(UPDATE_INTERVAL * 1000);
+  Timer4.start();
 }
 
 /*
@@ -191,26 +205,22 @@ void setup()
  */
 void loop()
 {
-  static int npeaks = 0;
   peak_list_t* peak_list;
   peak_t fundamental;
   
-  int is_full;
-  int smooth_safe;
+  volatile int is_full;
+  volatile int smooth_safe;
 
-  // get buffer status (within mutex)
-  noInterrupts();
+  // get data acquisition status
+  noInterrupts();   // enter critical zone
   
     is_full = is_buffer_full(sig[acquisition_channel]);
     smooth_safe = smooth;
     
-  interrupts();
+  interrupts();     // exit critical zone
 
-  // alpha filter for vu meter
+  // update vu meter display 
   display_vu_meter(smooth_safe);
-
-  // drive RGB LED
-  drivePWM(npeaks, fundamental.frequency);
 
   // ensure that data acquisition has completed
   if (!is_full) {
@@ -223,7 +233,7 @@ void loop()
 
   // First, prepare and launch data acquisition on the second channel 
 
-  noInterrupts();    // enter critical
+  noInterrupts();    // enter critical zone
 
     // swap acquisition channel
     int temp = acquisition_channel;
@@ -233,7 +243,7 @@ void loop()
     // get ready for the next acquistion
     erase_signal(sig[acquisition_channel]);
 
-  interrupts();   // exit critical zone
+  interrupts();     // exit critical zone
 
   // Then, process the signal on the first channel
 
@@ -244,17 +254,19 @@ void loop()
   compute_peak_list(sig[processing_channel], MIN_FREQUENCY, MAX_FREQUENCY);
   peak_list = get_peak_list(sig[processing_channel]);
   fundamental = find_fundamental_frequency(peak_list);
-  npeaks = list_size(peak_list);
+
+  noInterrupts();    // enter critical zone
+
+    frequency = fundamental.frequency;
+    npeaks = list_size(peak_list);
+
+  interrupts();      // exit critical zone
 
   printFrequency(fundamental);
 
   // flash LED_BUILTIN to show the program is running.
   digitalWrite(LED_BUILTIN, alive);
   alive = !alive;
-
-//  printSignal();
-//  delay(10000);
-//  Serial.println();
 }
 
 

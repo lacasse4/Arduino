@@ -10,13 +10,14 @@
  * Updated from AutoStrobe 1 following construction of a hardware prototype
  * Additions:
  *   - data acquisition is driven by a timer interrupt
- *   - drives 3 PWM channels with a frequency slighty lower than the audio signal
+ *   - drives 3 PWM channels with a frequency slighty higher than the audio signal
  *      * channel Red is on Due pin 35
  *      * channel Green is on Due pin 37
  *      * channel Blue is on Due pin 39
  *    - drives 3 on/off led as signal power vu-meter
  *    - drives 1 on/off led as clipping signal
  *    - ramp up and dowm of LED intensity
+ *    - the 3 PWM are new driven by an ISR rourine to ensure ramp up and down responsivness.
  */
 
 #include <spectrum.h>

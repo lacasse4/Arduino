@@ -139,7 +139,10 @@ volatile double smooth = 0.0;
 /* for debugging
 char ttt[3][100];
 char uuu[3][100];
+int  xxx = 0;
+#define SKIP 2000000
 */
+
 
 /*
  * Other global variables
@@ -192,13 +195,17 @@ void setup()
   led_stop();
 
   // start signal acquisition
-  Timer3.attachInterrupt(acquisition_handler);
-  Timer3.setFrequency(samplingFrequency); 
-  Timer3.start();
+  Timer0.attachInterrupt(acquisition_handler);
+  Timer0.setFrequency(samplingFrequency); 
+  // data_acquisition handler must have a higher priority than led display handler
+  // otherwise data_acquisition rate is not stable.
+  NVIC_SetPriority(TC0_IRQn, 0);         
+  Timer0.start();
 
-  Timer4.attachInterrupt(led_display_handler);
-  Timer4.setPeriod(UPDATE_INTERVAL * 1000);
-  Timer4.start();
+  Timer3.attachInterrupt(led_display_handler);
+  Timer3.setPeriod(UPDATE_INTERVAL * 1000);
+  NVIC_SetPriority(TC3_IRQn, 1);
+  Timer3.start();
 }
 
 /*
@@ -231,7 +238,6 @@ void loop()
   /*
    * The acquistion buffer is full.  Process the signal.
    */
-
   // First, prepare and launch data acquisition on the second channel 
 
   noInterrupts();    // enter critical zone
@@ -249,6 +255,7 @@ void loop()
   // Then, process the signal on the first channel
 
   // compute spectrum using a FFT
+  remove_bias(sig[processing_channel]);
   compute_spectrum(sig[processing_channel]);
 
   // compute the peak list

@@ -18,6 +18,7 @@
  *    - drives 1 on/off led as clipping signal
  *    - ramp up and dowm of LED intensity
  *    - the 3 PWM are new driven by an ISR rourine to ensure ramp up and down responsivness.
+ *    - added a 1s watchdog to reset the program.
  */
 
 #include <spectrum.h>
@@ -139,15 +140,46 @@ volatile double smooth = 0.0;
 /* for debugging
 char ttt[3][100];
 char uuu[3][100];
-int  xxx = 0;
 #define SKIP 2000000
 */
+int  xxx = 0;
 
 
 /*
  * Other global variables
  */
 int alive = 0;              // To blink an 'Alive' signal on BUILTIN_LED
+
+/*
+ * Watchdog 
+ */
+#define WDT_KEY (0xA5)
+#define WATCHDOG_DELAY  1   // watchdog delay in seconds
+
+// watchdogSetup() is called from init()
+// It must be redefined as empty function, otherwise watchdog will be disabled
+void watchdogSetup(void) { } 
+
+// enableWatchdog() enables the watchdow for a the period specified in 'seconds'
+// Should be called in setup() 
+void enableWatchdog(int seconds) {
+  // WDT_MR_WDRSTEN -> triggers a processor reset 
+  // (use WDT_MR_WDFIEN to call the interrupt handler 'void WDT_Handler(void)' instead
+  // Slow clock is running at 32.768 kHz, watchdog frequency is therefore 32768 / 128 = 256 Hz
+  // WDV holds the period in 256 th of seconds
+  WDT->WDT_MR = WDT_MR_WDD(0xFFF) | WDT_MR_WDRSTEN | WDT_MR_WDV(256 * seconds); 
+  NVIC_EnableIRQ(WDT_IRQn);
+}
+
+// restartWatchdog() should be called frequently in loop() to reset the watchdog timer.
+void restartWatchdog(void) {
+  WDT->WDT_CR = WDT_CR_KEY(WDT_KEY) | WDT_CR_WDRSTT;  
+}
+
+// WDT_Handler() not used in this program, for reference only
+void WDT_Handler(void)  {
+  WDT->WDT_SR; // Clear status register
+}
 
 
 /*
@@ -206,6 +238,8 @@ void setup()
   Timer3.setPeriod(UPDATE_INTERVAL * 1000);
   NVIC_SetPriority(TC3_IRQn, 1);
   Timer3.start();
+
+  enableWatchdog(WATCHDOG_DELAY);
 }
 
 /*
@@ -262,7 +296,7 @@ void loop()
   compute_peak_list(sig[processing_channel], MIN_FREQUENCY, MAX_FREQUENCY);
   peak_list = get_peak_list(sig[processing_channel]);
   fundamental = find_fundamental_frequency(peak_list);
-
+  
   noInterrupts();    // enter critical zone
 
     frequency = fundamental.frequency;
@@ -275,6 +309,8 @@ void loop()
   // flash LED_BUILTIN to show the program is running.
   digitalWrite(LED_BUILTIN, alive);
   alive = !alive;
+
+  restartWatchdog();
 }
 
 

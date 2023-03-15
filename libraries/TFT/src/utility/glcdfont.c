@@ -1,4 +1,5 @@
-#ifndef ARDUINO_ARCH_SAM
+#if !defined(ARDUINO_ARCH_SAM) && !defined(__ARDUINO_ARC__) && \
+    !defined(ARDUINO_ARCH_STM32)
 #include <avr/io.h>
 #endif
 #include <avr/pgmspace.h> 

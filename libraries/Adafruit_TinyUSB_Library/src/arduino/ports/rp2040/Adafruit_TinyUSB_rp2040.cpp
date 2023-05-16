@@ -24,7 +24,7 @@
 
 #include "tusb_option.h"
 
-#if defined ARDUINO_ARCH_RP2040 && TUSB_OPT_DEVICE_ENABLED
+#if defined ARDUINO_ARCH_RP2040 && CFG_TUD_ENABLED
 
 #include "Arduino.h"
 
@@ -88,6 +88,10 @@ static void usb_task_irq(void) {
   }
 }
 
+#ifndef PICO_SHARED_IRQ_HANDLER_LOWEST_ORDER_PRIORITY
+#define PICO_SHARED_IRQ_HANDLER_LOWEST_ORDER_PRIORITY 0x00
+#endif
+
 // invoked when there is hardware usb irq, trigger task runner later
 static void usb_task_trigger_irq(void) { irq_set_pending(USB_TASK_IRQ); }
 
@@ -134,20 +138,6 @@ void TinyUSB_Device_Task(void) {
     mutex_exit(&__usb_mutex);
   }
 }
-
-// Debug log with Serial1
-#if CFG_TUSB_DEBUG
-int serial1_printf(const char *__restrict format, ...) {
-  char buf[256];
-  int len;
-  va_list ap;
-  va_start(ap, format);
-  len = vsnprintf(buf, sizeof(buf), format, ap);
-  Serial1.write(buf);
-  va_end(ap);
-  return len;
-}
-#endif
 }
 
 #endif

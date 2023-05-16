@@ -24,7 +24,7 @@
 
 #include "tusb_option.h"
 
-#if defined ARDUINO_ARCH_SAMD && TUSB_OPT_DEVICE_ENABLED
+#if defined ARDUINO_ARCH_SAMD && CFG_TUD_ENABLED
 
 #include "Arduino.h"
 #include <Reset.h> // Needed for auto-reset with 1200bps port touch
@@ -50,20 +50,6 @@ void USB_3_Handler(void) { tud_int_handler(0); }
 // SAMD21
 void USB_Handler(void) { tud_int_handler(0); }
 
-#endif
-
-// Debug log with Serial1
-#if CFG_TUSB_DEBUG
-int serial1_printf(const char *__restrict format, ...) {
-  char buf[256];
-  int len;
-  va_list ap;
-  va_start(ap, format);
-  len = vsnprintf(buf, sizeof(buf), format, ap);
-  Serial1.write(buf);
-  va_end(ap);
-  return len;
-}
 #endif
 
 } // extern C

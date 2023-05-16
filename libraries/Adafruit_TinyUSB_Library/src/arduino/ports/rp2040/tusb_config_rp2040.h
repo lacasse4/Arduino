@@ -52,11 +52,6 @@ extern "C" {
 #define CFG_TUSB_DEBUG 0
 #endif
 
-#if CFG_TUSB_DEBUG
-#define CFG_TUSB_DEBUG_PRINTF serial1_printf
-extern int serial1_printf(const char *__restrict __format, ...);
-#endif
-
 #define CFG_TUSB_MEM_SECTION
 #define CFG_TUSB_MEM_ALIGN TU_ATTR_ALIGNED(4)
 
@@ -68,7 +63,7 @@ extern int serial1_printf(const char *__restrict __format, ...);
 
 #define CFG_TUD_CDC 1
 #define CFG_TUD_MSC 1
-#define CFG_TUD_HID 1
+#define CFG_TUD_HID 2
 #define CFG_TUD_MIDI 1
 #define CFG_TUD_VENDOR 1
 
@@ -100,20 +95,24 @@ extern int serial1_printf(const char *__restrict __format, ...);
 // Number of hub devices
 #define CFG_TUH_HUB 1
 
-// max device support (excluding hub device)
-#define CFG_TUH_DEVICE_MAX (CFG_TUH_HUB ? 4 : 1) // hub typically has 4 ports
+// max device support (excluding hub device): 1 hub typically has 4 ports
+#define CFG_TUH_DEVICE_MAX (3 * CFG_TUH_HUB + 1)
 
 // Enable tuh_edpt_xfer() API
-//#define CFG_TUH_API_EDPT_XFER       1
+// #define CFG_TUH_API_EDPT_XFER       1
 
 // Number of mass storage
 #define CFG_TUH_MSC 1
 
 // Number of HIDs
-#define CFG_TUH_HID 4
+// typical keyboard + mouse device can have 3,4 HID interfaces
+#define CFG_TUH_HID (3 * CFG_TUH_DEVICE_MAX)
 
 // Number of CDC interfaces
+// FTDI and CP210x are not part of CDC class, only to re-use CDC driver API
 #define CFG_TUH_CDC 1
+#define CFG_TUH_CDC_FTDI 1
+#define CFG_TUH_CDC_CP210X 1
 
 // RX & TX fifo size
 #define CFG_TUH_CDC_RX_BUFSIZE 128
@@ -125,9 +124,9 @@ extern int serial1_printf(const char *__restrict __format, ...);
 
 // Set Line Coding on enumeration/mounted, value for cdc_line_coding_t
 // bit rate = 115200, 1 stop bit, no parity, 8 bit data width
-// This need https://github.com/sekigon-gonnoc/Pico-PIO-USB/pull/58 to be merged
-// first #define CFG_TUH_CDC_LINE_CODING_ON_ENUM   { 115200,
-// CDC_LINE_CONDING_STOP_BITS_1, CDC_LINE_CODING_PARITY_NONE, 8 }
+// This need Pico-PIO-USB at least 0.5.1
+#define CFG_TUH_CDC_LINE_CODING_ON_ENUM                                        \
+  { 115200, CDC_LINE_CONDING_STOP_BITS_1, CDC_LINE_CODING_PARITY_NONE, 8 }
 
 #ifdef __cplusplus
 }

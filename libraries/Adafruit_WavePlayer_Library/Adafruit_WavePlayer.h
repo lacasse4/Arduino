@@ -17,6 +17,9 @@
 
 #include <Arduino.h>
 #include <SdFat.h>
+#if defined(ARDUINO_ARCH_RP2040)
+#define File FatFile
+#endif
 
 /*!
   @brief  Return codes used by functions in this library

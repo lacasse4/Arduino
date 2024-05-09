@@ -27,14 +27,58 @@
 
 #include "Adafruit_USBD_Interface.h"
 #include "tusb.h"
+#include <SPI.h>
 
 #ifdef ARDUINO_ARCH_ESP32
 #include "esp32-hal-tinyusb.h"
 #endif
 
+#if defined(CFG_TUH_MAX3421) && CFG_TUH_MAX3421
+extern "C" {
+void tuh_max3421_spi_cs_api(uint8_t rhport, bool active);
+bool tuh_max3421_spi_xfer_api(uint8_t rhport, uint8_t const *tx_buf,
+                              uint8_t *rx_buf, size_t xfer_bytes);
+void tuh_max3421_int_api(uint8_t rhport, bool enabled);
+}
+
 class Adafruit_USBH_Host {
 private:
+  SPIClass *_spi;
+  int8_t _cs;
+  int8_t _intr;
+
+  // for esp32 or using softwareSPI
+  int8_t _sck, _mosi, _miso;
+
 public:
+  // constructor for using MAX3421E (host shield)
+  Adafruit_USBH_Host(SPIClass *spi, int8_t cs, int8_t intr);
+  Adafruit_USBH_Host(SPIClass *spi, int8_t sck, int8_t mosi, int8_t miso,
+                     int8_t cs, int8_t intr);
+
+  uint8_t max3421_readRegister(uint8_t reg, bool in_isr);
+  bool max3421_writeRegister(uint8_t reg, uint8_t data, bool in_isr);
+  bool max3421_writeIOPINS1(uint8_t data, bool in_isr) {
+    enum { IOPINS1_ADDR = 20u << 3 }; // 0xA0
+    return max3421_writeRegister(IOPINS1_ADDR, data, in_isr);
+  }
+  bool max3421_writeIOPINS2(uint8_t data, bool in_isr) {
+    enum { IOPINS2_ADDR = 21u << 3 }; // 0xA8
+    return max3421_writeRegister(IOPINS2_ADDR, data, in_isr);
+  }
+
+private:
+  friend void tuh_max3421_spi_cs_api(uint8_t rhport, bool active);
+  friend bool tuh_max3421_spi_xfer_api(uint8_t rhport, uint8_t const *tx_buf,
+                                       uint8_t *rx_buf, size_t xfer_bytes);
+  friend void tuh_max3421_int_api(uint8_t rhport, bool enabled);
+#else
+
+class Adafruit_USBH_Host {
+#endif
+
+public:
+  // default constructor
   Adafruit_USBH_Host(void);
 
   bool configure(uint8_t rhport, uint32_t cfg_id, const void *cfg_param);
@@ -44,23 +88,13 @@ public:
 #endif
 
   bool begin(uint8_t rhport);
-  void task(void);
+  void task(uint32_t timeout_ms = UINT32_MAX, bool in_isr = false);
+
+  //------------- internal usage -------------//
+  static Adafruit_USBH_Host *_instance;
 
 private:
-  //  uint16_t const *descrip`tor_string_cb(uint8_t index, uint16_t langid);
-  //
-  //  friend uint8_t const *tud_descriptor_device_cb(void);
-  //  friend uint8_t const *tud_descriptor_configuration_cb(uint8_t index);
-  //  friend uint16_t const *tud_descriptor_string_cb(uint8_t index,
-  //                                                  uint16_t langid);
+  uint8_t _rhport;
 };
 
-// extern Adafruit_USBH_Host TinyUSBHost;
-//
-//// USBHost has a high chance to conflict with other usb stack
-//// only define if supported BSP
-// #ifdef USE_TINYUSB
-// #define USBHost TinyUSBHost
-// #endif
-
-#endif /* ADAFRUIT_USBH_HOST_H_ */
+#endif

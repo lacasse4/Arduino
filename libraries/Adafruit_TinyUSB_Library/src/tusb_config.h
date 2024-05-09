@@ -39,8 +39,17 @@
   #include "arduino/ports/rp2040/tusb_config_rp2040.h"
 
 #elif defined(ARDUINO_ARCH_ESP32)
-  // Use the BSP sdk/include/arduino_tinyusb/include/tusb_config.h
-  #include <tusb_config.h>
+  // Note: when compiling core Arduino IDEs will include tusb_config.h in the BSP
+  // sdk/include/arduino_tinyusb/include. While compiling .c file in this library this
+  // file will be used instead. For consistency: include the one in BSP here as well
+  #include "sdkconfig.h"
+  #if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
+    #include "../../arduino_tinyusb/include/tusb_config.h"
+  #else
+    #include "arduino/ports/esp32/tusb_config_esp32.h"
+  #endif
+
+  // Note: For platformio prioritize this file over the one in BSP in all cases
 
 #else
   #error TinyUSB Arduino Library does not support your core yet
@@ -48,7 +57,7 @@
 
 // Debug TinyUSB with Serial1
 #if CFG_TUSB_DEBUG
-#define CFG_TUSB_DEBUG_PRINTF serial1_printf
+#define CFG_TUSB_DEBUG_PRINTF log_printf
 #endif
 
 #ifdef __cplusplus

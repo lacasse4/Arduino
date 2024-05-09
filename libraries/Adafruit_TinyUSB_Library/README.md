@@ -15,14 +15,17 @@ Supported device class drivers are:
 - Human Interface Device (HID): Generic (In & Out), Keyboard, Mouse, Gamepad etc ...
 - Mass Storage Class (MSC): with multiple LUNs
 - Musical Instrument Digital Interface (MIDI)
+- Video (UVC): work in progress
 - WebUSB with vendor specific class
 
 ### Host Stack
 
-Host support is still work-in-progress but currently available with rp2040 core thanks to [Pico-PIO-USB](https://github.com/sekigon-gonnoc/Pico-PIO-USB). Supported class driver are:
+Host stack is available with either addition of MAX3421E hardware (e.g [Host FeatherWing](https://www.adafruit.com/product/5858)) or  rp2040 core (thanks to [Pico-PIO-USB](https://github.com/sekigon-gonnoc/Pico-PIO-USB)). Supported class driver are:
 
-- Communication (CDC)
+- Communication (CDC): including vendor usb2uart such as FTDI, CP210x, CH34x
 - MassStorage class
+
+Note: Host stack is still work-in-progress
 
 ## Supported Cores
 
@@ -37,7 +40,7 @@ Following core has TinyUSB as either the primary usb stack or selectable via men
 - [earlephilhower/arduino-pico](https://github.com/earlephilhower/arduino-pico)
 - [espressif/arduino-esp32](https://github.com/espressif/arduino-esp32)
 
-  ESP32 port relies on Espressif's [esp32-hal-tinyusb.c](https://github.com/espressif/arduino-esp32/blob/master/cores/esp32/esp32-hal-tinyusb.c) for building usb descriptors which requires all descriptors must be specified in usb objects declaration i.e constructors. Therefore all descriptor-related fields must be part of object declaration and descriptor-related API have no effect afterwards for this port. 
+Note: For ESP32 port, version before v3.0 requires all descriptors must be specified in usb objects declaration i.e constructors. Therefore all descriptor-related fields must be part of object declaration and descriptor-related API have no effect afterwards. This limitation is not the case for version from v3.0. 
 
 ### Cores without built-in support
 

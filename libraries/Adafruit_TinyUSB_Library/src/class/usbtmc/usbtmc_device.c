@@ -67,6 +67,11 @@
 // Ability to defer status byte transmission
 // Transmission of status byte in response to USB488 SRQ condition
 
+// ESP32 out-of-sync
+#ifdef ARDUINO_ARCH_ESP32
+#include "arduino/ports/esp32/tusb_config_esp32.h"
+#endif
+
 #include "tusb_option.h"
 
 #if (CFG_TUD_ENABLED && CFG_TUD_USBTMC)
@@ -143,7 +148,7 @@ typedef struct
   usbtmc_capabilities_specific_t const * capabilities;
 } usbtmc_interface_state_t;
 
-CFG_TUSB_MEM_SECTION tu_static usbtmc_interface_state_t usbtmc_state =
+CFG_TUD_MEM_SECTION tu_static usbtmc_interface_state_t usbtmc_state =
 {
     .itf_id = 0xFF,
 };

@@ -34,10 +34,14 @@
 // USB Information can be defined in variant file e.g pins_arduino.h
 #include "Arduino.h"
 
-// - USB_VID, USB_PID, USB_MANUFACTURER, USB_PRODUCT are defined on most
-// core that has built-in support for TinyUSB. Otherwise
-// - BOARD_VENDORID, BOARD_PRODUCTID, BOARD_MANUFACTURER, BOARD_NAME are use
-// if defined, mostly on mbed core
+/* VID, PID, Manufacturer and Product name:
+ * - For most ports: USB_VID, USB_PID, USB_MANUFACTURER, USB_PRODUCT are
+ * defined.
+ * - For ESP32: Default USB_MANUFACTURER is Espressif (instead of Adafruit),
+ * ARDUINO_BOARD as USB_PRODUCT
+ * - For mbed core: BOARD_VENDORID, BOARD_PRODUCTID, BOARD_MANUFACTURER,
+ * BOARD_NAME are defined
+ */
 
 #ifndef USB_VID
 #ifdef BOARD_VENDORID
@@ -56,16 +60,19 @@
 #endif
 
 #ifndef USB_MANUFACTURER
-
 #ifdef BOARD_MANUFACTURER
 #define USB_MANUFACTURER BOARD_MANUFACTURER
+#elif defined(ARDUINO_ARCH_ESP32)
+#define USB_MANUFACTURER "Espressif Systems"
 #else
 #define USB_MANUFACTURER "Adafruit"
 #endif
 #endif
 
 #ifndef USB_PRODUCT
-#ifdef BOARD_NAME
+#if defined(ARDUINO_BOARD)
+#define USB_PRODUCT ARDUINO_BOARD
+#elif defined(BOARD_NAME)
 #define USB_PRODUCT BOARD_NAME
 #else
 #define USB_PRODUCT "Unknown"
@@ -84,7 +91,12 @@ enum { STRID_LANGUAGE = 0, STRID_MANUFACTURER, STRID_PRODUCT, STRID_SERIAL };
 
 Adafruit_USBD_Device TinyUSBDevice;
 
-Adafruit_USBD_Device::Adafruit_USBD_Device(void) {}
+Adafruit_USBD_Device::Adafruit_USBD_Device(void) {
+#if defined(ARDUINO_ARCH_ESP32) && ARDUINO_USB_CDC_ON_BOOT && !ARDUINO_USB_MODE
+  // auto begin for ESP32 USB OTG Mode with CDC on boot
+  begin(0);
+#endif
+}
 
 void Adafruit_USBD_Device::setConfigurationBuffer(uint8_t *buf,
                                                   uint32_t buflen) {
@@ -152,36 +164,6 @@ bool Adafruit_USBD_Device::detach(void) { return tud_disconnect(); }
 
 bool Adafruit_USBD_Device::attach(void) { return tud_connect(); }
 
-// EPS32 use built-in core descriptor builder.
-// Therefore most of descriptors are stubs only
-#ifdef ARDUINO_ARCH_ESP32
-
-void Adafruit_USBD_Device::clearConfiguration(void) {}
-
-bool Adafruit_USBD_Device::addInterface(Adafruit_USBD_Interface &itf) {
-  (void)itf;
-  return true;
-}
-
-bool Adafruit_USBD_Device::begin(uint8_t rhport) {
-  (void)rhport;
-  return true;
-}
-
-uint8_t Adafruit_USBD_Device::getSerialDescriptor(uint16_t *serial_utf16) {
-  (void)serial_utf16;
-  return 0;
-}
-
-uint16_t const *Adafruit_USBD_Device::descriptor_string_cb(uint8_t index,
-                                                           uint16_t langid) {
-  (void)index;
-  (void)langid;
-  return NULL;
-}
-
-#else
-
 void Adafruit_USBD_Device::clearConfiguration(void) {
   tusb_desc_device_t const desc_dev = {.bLength = sizeof(tusb_desc_device_t),
                                        .bDescriptorType = TUSB_DESC_DEVICE,
@@ -235,42 +217,9 @@ bool Adafruit_USBD_Device::addInterface(Adafruit_USBD_Interface &itf) {
   uint8_t *desc = _desc_cfg + _desc_cfg_len;
   uint16_t const len = itf.getInterfaceDescriptor(
       _itf_count, desc, _desc_cfg_maxlen - _desc_cfg_len);
-  uint8_t *desc_end = desc + len;
-
-  const char *desc_str = itf.getStringDescriptor();
 
   if (!len) {
     return false;
-  }
-
-  // Parse interface descriptor to update
-  // - Interface Number & string descriptor
-  // - Endpoint address
-  while (desc < desc_end) {
-    if (tu_desc_type(desc) == TUSB_DESC_INTERFACE) {
-      tusb_desc_interface_t *desc_itf = (tusb_desc_interface_t *)desc;
-      if (desc_itf->bAlternateSetting == 0) {
-        _itf_count++;
-        if (desc_str && (_desc_str_count < STRING_DESCRIPTOR_MAX)) {
-          _desc_str_arr[_desc_str_count] = desc_str;
-          desc_itf->iInterface = _desc_str_count;
-          _desc_str_count++;
-
-          // only assign string index to first interface
-          desc_str = NULL;
-        }
-      }
-    } else if (tu_desc_type(desc) == TUSB_DESC_ENDPOINT) {
-      tusb_desc_endpoint_t *desc_ep = (tusb_desc_endpoint_t *)desc;
-      desc_ep->bEndpointAddress |=
-          (desc_ep->bEndpointAddress & 0x80) ? _epin_count++ : _epout_count++;
-    }
-
-    if (desc[0] == 0) {
-      return false;
-    }
-
-    desc += tu_desc_len(desc);
   }
 
   _desc_cfg_len += len;
@@ -294,10 +243,28 @@ bool Adafruit_USBD_Device::begin(uint8_t rhport) {
   _desc_device.bDeviceSubClass = MISC_SUBCLASS_COMMON;
   _desc_device.bDeviceProtocol = MISC_PROTOCOL_IAD;
 
+#if defined(ARDUINO_ARCH_ESP32)
+#if ARDUINO_USB_CDC_ON_BOOT && !ARDUINO_USB_MODE
+  // follow USBCDC cdc descriptor
+  uint8_t itfnum = allocInterface(2);
+  uint8_t strid = addStringDescriptor("TinyUSB Serial");
+  uint8_t const desc_cdc[TUD_CDC_DESC_LEN] = {
+      TUD_CDC_DESCRIPTOR(itfnum, strid, 0x85, 64, 0x03, 0x84, 64)};
+
+  memcpy(_desc_cfg + _desc_cfg_len, desc_cdc, sizeof(desc_cdc));
+  _desc_cfg_len += sizeof(desc_cdc);
+
+  // Update configuration descriptor
+  tusb_desc_configuration_t *config = (tusb_desc_configuration_t *)_desc_cfg;
+  config->wTotalLength = _desc_cfg_len;
+  config->bNumInterfaces = _itf_count;
+#endif
+#else
   SerialTinyUSB.begin(115200);
 
   // Init device hardware and call tusb_init()
   TinyUSB_Port_InitDevice(rhport);
+#endif
 
   return true;
 }
@@ -552,7 +519,5 @@ void tud_dfu_runtime_reboot_to_dfu_cb(void) {
   // TinyUSB_Port_EnterDFU();
 }
 #endif
-
-#endif // ESP32
 
 #endif // CFG_TUD_ENABLED

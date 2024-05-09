@@ -32,7 +32,7 @@
 #define SPIFLASH_LOG(_address, _count)                                         \
   do {                                                                         \
     Serial.print(__FUNCTION__);                                                \
-    Serial.print(": adddress = ");                                             \
+    Serial.print(": address = ");                                              \
     Serial.print(_address, HEX);                                               \
     if (_count) {                                                              \
       Serial.print(" count = ");                                               \
@@ -93,13 +93,16 @@ static const SPIFlash_Device_t possible_devices[] = {
     GD25Q16C, GD25Q32C, GD25Q64C, S25FL116K, S25FL216K,
 
     // Only a handful of production run
-    W25Q16FW, W25Q64JV_IQ,
+    W25Q16FW,
+
+    // Flash breakout
+    W25Q16JV_IQ, W25Q32JV_IQ, W25Q64JV_IQ, W25Q128JV_SQ,
 
     // Fujitsu FRAM
     MB85RS64V, MB85RS1MT, MB85RS2MTA, MB85RS4MT,
 
     // Other common flash devices
-    W25Q16JV_IQ, W25Q32JV_IQ, AT25SF041, AT25DF081A};
+    AT25SF041, AT25DF081A};
 
 /// Flash device list count
 enum {
@@ -331,6 +334,32 @@ bool Adafruit_SPIFlashBase::writeEnable(void) {
 
 bool Adafruit_SPIFlashBase::writeDisable(void) {
   return _trans->runCommand(SFLASH_CMD_WRITE_DISABLE);
+}
+
+bool Adafruit_SPIFlashBase::erasePage(uint32_t pageNumber) {
+  if (!_flash_dev) {
+    return false;
+  }
+
+  // skip erase for FRAM
+  if (_flash_dev->is_fram) {
+    return true;
+  }
+
+  _indicator_on();
+
+  // Before we erase the page we need to wait for any writes to finish
+  waitUntilReady();
+  writeEnable();
+
+  SPIFLASH_LOG(pageNumber * SFLASH_PAGE_SIZE, 0);
+
+  bool const ret = _trans->eraseCommand(SFLASH_CMD_ERASE_PAGE,
+                                        pageNumber * SFLASH_PAGE_SIZE);
+
+  _indicator_off();
+
+  return ret;
 }
 
 bool Adafruit_SPIFlashBase::eraseSector(uint32_t sectorNumber) {

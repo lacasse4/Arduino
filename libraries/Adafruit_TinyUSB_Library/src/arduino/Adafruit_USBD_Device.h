@@ -26,7 +26,8 @@
 #define ADAFRUIT_USBD_DEVICE_H_
 
 #include "Adafruit_USBD_Interface.h"
-#include "tusb.h"
+
+#include "../tusb.h" // use relative path to prevent ESP32 out-of-sync issue
 
 #ifdef ARDUINO_ARCH_ESP32
 #include "esp32-hal-tinyusb.h"
@@ -71,15 +72,36 @@ public:
 
   //------------- Configuration descriptor -------------//
 
-  // Add an new interface
+  // Add a new interface
   bool addInterface(Adafruit_USBD_Interface &itf);
 
   // Clear/Reset configuration descriptor
   void clearConfiguration(void);
 
-  // Provide user buffer for configuration descriptor, needed if total length >
-  // 256
+  // Provide user buffer for configuration descriptor, if total length > 256
   void setConfigurationBuffer(uint8_t *buf, uint32_t buflen);
+
+  // Allocate a new interface number
+  uint8_t allocInterface(uint8_t count = 1) {
+    uint8_t ret = _itf_count;
+    _itf_count += count;
+    return ret;
+  }
+
+  uint8_t allocEndpoint(uint8_t in) {
+    uint8_t ret = in ? (0x80 | _epin_count++) : _epout_count++;
+#if defined(ARDUINO_ARCH_ESP32) && ARDUINO_USB_CDC_ON_BOOT && !ARDUINO_USB_MODE
+    // ESP32 reserves 0x03, 0x84, 0x85 for CDC Serial
+    if (ret == 0x03) {
+      ret = _epout_count++;
+    } else if (ret == 0x84 || ret == 0x85) {
+      // Note: ESP32 does not have this much of EP IN
+      _epin_count = 6;
+      ret = 0x86;
+    }
+#endif
+    return ret;
+  }
 
   //------------- String descriptor -------------//
   void setLanguageDescriptor(uint16_t language_id);

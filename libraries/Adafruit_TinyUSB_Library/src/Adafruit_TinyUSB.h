@@ -32,6 +32,11 @@
 #error TinyUSB is not selected, please select it in "Tools->Menu->USB Stack"
 #endif
 
+// ESP32 out-of-sync
+#ifdef ARDUINO_ARCH_ESP32
+#include "arduino/ports/esp32/tusb_config_esp32.h"
+#endif
+
 #include "tusb_option.h"
 
 // Device
@@ -57,6 +62,10 @@
 
 #if CFG_TUD_VENDOR
 #include "arduino/webusb/Adafruit_USBD_WebUSB.h"
+#endif
+
+#if CFG_TUD_VIDEO
+#include "arduino/video/Adafruit_USBD_Video.h"
 #endif
 
 // Initialize device hardware, stack, also Serial as CDC

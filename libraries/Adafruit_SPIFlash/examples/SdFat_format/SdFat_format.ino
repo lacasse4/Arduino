@@ -11,7 +11,7 @@
 // - Upload this sketch to your M0 express board.
 // - Open the serial monitor at 115200 baud.  You should see a
 //   prompt to confirm formatting.  If you don't see the prompt
-//   close the serial monitor, press the board reset buttton,
+//   close the serial monitor, press the board reset button,
 //   wait a few seconds, then open the serial monitor again.
 // - Type OK and enter to confirm the format when prompted.
 // - Partitioning and formatting will take about 30-60 seconds.
@@ -34,7 +34,7 @@
 #include "flash_config.h"
 
 Adafruit_SPIFlash flash(&flashTransport);
-
+FatVolume fatfs;
 
 void format_fat12(void)
 {
@@ -82,7 +82,6 @@ void format_fat12(void)
 void check_fat12(void)
 {
   // Check new filesystem
-  FatVolume fatfs;
   if (!fatfs.begin(&flash)) {
     Serial.println(F("Error, failed to mount newly formatted filesystem!"));
     while(1) delay(1);

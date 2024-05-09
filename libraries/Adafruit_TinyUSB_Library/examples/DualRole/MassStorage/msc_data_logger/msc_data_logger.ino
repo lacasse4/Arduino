@@ -11,47 +11,43 @@
 
 
 /* This example demonstrates use of both device and host, where
- * - Device run on native usb controller (controller0)
- * - Host run on bit-banging 2 GPIOs with the help of Pico-PIO-USB library (controller1)
- *
- * Example will log CPU temperature periodically (ms,value) to USB thumbdrive
+ * - Device run on native usb controller (roothub port0)
+ * - Host depending on MCUs run on either:
+ *   - rp2040: bit-banging 2 GPIOs with the help of Pico-PIO-USB library (roothub port1)
+ *   - samd21/51, nrf52840, esp32: using MAX3421e controller (host shield)
  *
  * Requirements:
- * - [Pico-PIO-USB](https://github.com/sekigon-gonnoc/Pico-PIO-USB) library
- * - 2 consecutive GPIOs: D+ is defined by PIN_USB_HOST_DP, D- = D+ +1
- * - Provide VBus (5v) and GND for peripheral
- * - CPU Speed must be either 120 or 240 Mhz. Selected via "Menu -> CPU Speed"
+ * - For rp2040:
+ *   - [Pico-PIO-USB](https://github.com/sekigon-gonnoc/Pico-PIO-USB) library
+ *   - 2 consecutive GPIOs: D+ is defined by PIN_USB_HOST_DP, D- = D+ +1
+ *   - Provide VBus (5v) and GND for peripheral
+ *   - CPU Speed must be either 120 or 240 Mhz. Selected via "Menu -> CPU Speed"
+ * - For samd21/51, nrf52840, esp32:
+ *   - Additional MAX2341e USB Host shield or featherwing is required
+ *   - SPI instance, CS pin, INT pin are correctly configured in usbh_helper.h
  */
 
-// pio-usb is required for rp2040 host
-#include "pio_usb.h"
+/* Example sketch read analog pin (default A0) and log it to LOG_FILE on the msc device
+ * every LOG_INTERVAL ms. */
+
+// nRF52 and ESP32 use freeRTOS, we may need to run USBhost.task() in its own rtos's thread.
+// Since USBHost.task() will put loop() into dormant state and prevent followed code from running
+// until there is USB host event.
+#if defined(ARDUINO_NRF52_ADAFRUIT) || defined(ARDUINO_ARCH_ESP32)
+  #define USE_FREERTOS
+#endif
 
 // SdFat is required for using Adafruit_USBH_MSC_SdFatDevice
 #include "SdFat.h"
 
-// TinyUSB lib
-#include "Adafruit_TinyUSB.h"
-
-// Pin D+ for host, D- = D+ + 1
-#ifndef PIN_USB_HOST_DP
-#define PIN_USB_HOST_DP       16
-#endif
-
-// Pin for enabling Host VBUS. comment out if not used
-#ifndef PIN_5V_EN
-#define PIN_5V_EN        18
-#endif
-
-#ifndef PIN_5V_EN_STATE
-#define PIN_5V_EN_STATE  1
-#endif
-
+// USBHost is defined in usbh_helper.h
+#include "usbh_helper.h"
 
 #define LOG_FILE        "cpu_temp.csv"
 #define LOG_INTERVAL    5000
 
-// USB Host object
-Adafruit_USBH_Host USBHost;
+// Analog pin for reading
+const int analogPin = A0;
 
 // USB Host MSC Block Device object which implemented API for use with SdFat
 Adafruit_USBH_MSC_BlockDevice msc_block_dev;
@@ -63,25 +59,16 @@ File32 f_log;
 // if file system is successfully mounted on usb block device
 volatile bool is_mounted = false;
 
-//--------------------------------------------------------------------+
-// Setup and Loop on Core0
-//--------------------------------------------------------------------+
-
-void setup()
-{
-  pinMode(LED_BUILTIN, OUTPUT);
-
-  Serial.begin(115200);
-  //while ( !Serial ) delay(10);   // wait for native usb
-
-  Serial.println("TinyUSB Host MassStorage Data Logger Example");
-}
-
-void loop()
-{
+void data_log(void) {
   if (!is_mounted) {
     // nothing to do
-    delay(1000);
+    return;
+  }
+
+  static unsigned long last_ms = 0;
+  unsigned long ms = millis();
+
+  if ( ms - last_ms < LOG_INTERVAL ) {
     return;
   }
 
@@ -92,48 +79,79 @@ void loop()
 
   if (!f_log) {
     Serial.println("Cannot create file: " LOG_FILE);
-  }else {
-    float cpu_temp = analogReadTemp();
-    uint32_t ms = millis();
+  } else {
+    int value = analogRead(analogPin);
 
-    Serial.printf("%u,%.02f\r\n", millis(), cpu_temp);
-    f_log.printf("%u,%.02f\r\n", millis(), cpu_temp);
+    Serial.printf("%lu,%d\r\n", ms, value);
+    f_log.printf("%lu,%d\r\n", ms, value);
 
     f_log.close();
   }
 
-  delay(LOG_INTERVAL);
+  last_ms = ms;
+  Serial.flush();
 }
 
-//--------------------------------------------------------------------+
-// Setup and Loop on Core1
-//--------------------------------------------------------------------+
+#ifdef USE_FREERTOS
 
-void setup1() {
-  //while ( !Serial ) delay(10);   // wait for native usb
-  Serial.println("Core1 setup to run TinyUSB host with pio-usb");
-
-  // Check for CPU frequency, must be multiple of 120Mhz for bit-banging USB
-  uint32_t cpu_hz = clock_get_hz(clk_sys);
-  if ( cpu_hz != 120000000UL && cpu_hz != 240000000UL ) {
-    while ( !Serial ) {
-      delay(10);   // wait for native usb
-    }
-    Serial.printf("Error: CPU Clock = %lu, PIO USB require CPU clock must be multiple of 120 Mhz\r\n", cpu_hz);
-    Serial.printf("Change your CPU Clock to either 120 or 240 Mhz in Menu->CPU Speed \r\n");
-    while(1) {
-      delay(1);
-    }
-  }
-
-#ifdef PIN_5V_EN
-  pinMode(PIN_5V_EN, OUTPUT);
-  digitalWrite(PIN_5V_EN, PIN_5V_EN_STATE);
+#ifdef ARDUINO_ARCH_ESP32
+  #define USBH_STACK_SZ 2048
+#else
+  #define USBH_STACK_SZ 200
 #endif
 
-  pio_usb_configuration_t pio_cfg = PIO_USB_DEFAULT_CONFIG;
-  pio_cfg.pin_dp = PIN_USB_HOST_DP;
-  USBHost.configure_pio_usb(1, &pio_cfg);
+void usbhost_rtos_task(void *param) {
+  (void) param;
+  while (1) {
+    USBHost.task();
+  }
+}
+
+#endif
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(LED_BUILTIN, OUTPUT);
+
+#if defined(CFG_TUH_MAX3421) && CFG_TUH_MAX3421
+  // init host stack on controller (rhport) 1
+  // For rp2040: this is called in core1's setup1()
+  USBHost.begin(1);
+#endif
+
+#ifdef USE_FREERTOS
+  // Create a task to run USBHost.task() in background
+  xTaskCreate(usbhost_rtos_task, "usbh", USBH_STACK_SZ, NULL, 3, NULL);
+#endif
+
+//  while ( !Serial ) delay(10);   // wait for native usb
+  Serial.println("TinyUSB Host MassStorage Data Logger Example");
+}
+
+#if defined(CFG_TUH_MAX3421) && CFG_TUH_MAX3421
+//--------------------------------------------------------------------+
+// Using Host shield MAX3421E controller
+//--------------------------------------------------------------------+
+void loop() {
+#ifndef USE_FREERTOS
+  USBHost.task();
+#endif
+  data_log();
+}
+
+#elif defined(ARDUINO_ARCH_RP2040)
+//--------------------------------------------------------------------+
+// For RP2040 use both core0 for device stack, core1 for host stack
+//--------------------------------------------------------------------+
+void loop() {
+  data_log();
+}
+
+//------------- Core1 -------------//
+void setup1() {
+  // configure pio-usb: defined in usbh_helper.h
+  rp2040_configure_pio_usb();
 
   // run host stack on controller (rhport) 1
   // Note: For rp2040 pico-pio-usb, calling USBHost.begin() on core1 will have most of the
@@ -141,64 +159,16 @@ void setup1() {
   USBHost.begin(1);
 }
 
-void loop1()
-{
+void loop1() {
   USBHost.task();
-  Serial.flush();
 }
+
+#endif
 
 //--------------------------------------------------------------------+
 // TinyUSB Host callbacks
 //--------------------------------------------------------------------+
-
-// Invoked when device is mounted (configured)
-void tuh_mount_cb (uint8_t daddr)
-{
-  (void) daddr;
-}
-
-/// Invoked when device is unmounted (bus reset/unplugged)
-void tuh_umount_cb(uint8_t daddr)
-{
-  (void) daddr;
-}
-
-// Invoked when a device with MassStorage interface is mounted
-void tuh_msc_mount_cb(uint8_t dev_addr)
-{
-  // Initialize block device with MSC device address
-  msc_block_dev.begin(dev_addr);
-
-  // For simplicity this example only support LUN 0
-  msc_block_dev.setActiveLUN(0);
-
-  msc_block_dev.setWriteCompleteCallback(write_complete_callback);
-
-  is_mounted = fatfs.begin(&msc_block_dev);
-
-  if (is_mounted) {
-    fatfs.ls(&Serial, LS_SIZE);
-  }else {
-    Serial.println("Failed to mount mass storage device. Make sure it is formatted as FAT");
-  }
-}
-
-// Invoked when a device with MassStorage interface is unmounted
-void tuh_msc_umount_cb(uint8_t dev_addr)
-{
-  (void) dev_addr;
-
-  // unmount file system
-  is_mounted = false;
-  fatfs.end();
-
-  // end block device
-  msc_block_dev.end();
-}
-
-
-bool write_complete_callback(uint8_t dev_addr, tuh_msc_complete_data_t const* cb_data)
-{
+bool write_complete_callback(uint8_t dev_addr, tuh_msc_complete_data_t const *cb_data) {
   (void) dev_addr;
   (void) cb_data;
 
@@ -210,3 +180,46 @@ bool write_complete_callback(uint8_t dev_addr, tuh_msc_complete_data_t const* cb
   return true;
 }
 
+extern "C"
+{
+
+// Invoked when device is mounted (configured)
+void tuh_mount_cb(uint8_t daddr) {
+  (void) daddr;
+}
+
+/// Invoked when device is unmounted (bus reset/unplugged)
+void tuh_umount_cb(uint8_t daddr) {
+  (void) daddr;
+}
+
+// Invoked when a device with MassStorage interface is mounted
+void tuh_msc_mount_cb(uint8_t dev_addr) {
+  // Initialize block device with MSC device address
+  msc_block_dev.begin(dev_addr);
+
+  // For simplicity this example only support LUN 0
+  msc_block_dev.setActiveLUN(0);
+  msc_block_dev.setWriteCompleteCallback(write_complete_callback);
+  is_mounted = fatfs.begin(&msc_block_dev);
+
+  if (is_mounted) {
+    fatfs.ls(&Serial, LS_SIZE);
+  } else {
+    Serial.println("Failed to mount mass storage device. Make sure it is formatted as FAT");
+  }
+}
+
+// Invoked when a device with MassStorage interface is unmounted
+void tuh_msc_umount_cb(uint8_t dev_addr) {
+  (void) dev_addr;
+
+  // unmount file system
+  is_mounted = false;
+  fatfs.end();
+
+  // end block device
+  msc_block_dev.end();
+}
+
+}

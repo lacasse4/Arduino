@@ -32,25 +32,45 @@ extern "C" {
 //--------------------------------------------------------------------
 // COMMON CONFIGURATION
 //--------------------------------------------------------------------
-#define CFG_TUSB_RHPORT0_MODE OPT_MODE_DEVICE
 
-// Enable device stack
+#ifdef USE_TINYUSB_HOST
+// native as host
+#define CFG_TUD_ENABLED 0
+#define CFG_TUH_ENABLED 1
+#define CFG_TUH_RPI_PIO_USB 0
+
+#else
+// native as device
 #define CFG_TUD_ENABLED 1
 
-// Enable host stack with pio-usb if Pico-PIO-USB library is available
 #if __has_include("pio_usb.h")
+// Enable host stack with pio-usb if Pico-PIO-USB library is available
 #define CFG_TUH_ENABLED 1
 #define CFG_TUH_RPI_PIO_USB 1
-#endif
+
+#else
+// Otherwise enable host controller with MAX3421E
+#define CFG_TUH_ENABLED 1
+#define CFG_TUH_MAX3421 1
+
+#endif // pio_usb.h
+#endif // USE_TINYUSB_HOST
 
 #ifndef CFG_TUSB_MCU
 #define CFG_TUSB_MCU OPT_MCU_RP2040
 #endif
+
+#ifndef CFG_TUSB_OS
 #define CFG_TUSB_OS OPT_OS_PICO
+#endif
 
 #ifndef CFG_TUSB_DEBUG
 #define CFG_TUSB_DEBUG 0
 #endif
+
+// For selectively disable device log (when > CFG_TUSB_DEBUG)
+// #define CFG_TUD_LOG_LEVEL 3
+// #define CFG_TUH_LOG_LEVEL 3
 
 #define CFG_TUSB_MEM_SECTION
 #define CFG_TUSB_MEM_ALIGN TU_ATTR_ALIGNED(4)
@@ -59,13 +79,32 @@ extern "C" {
 // Device Configuration
 //--------------------------------------------------------------------
 
-#define CFG_TUD_ENDOINT0_SIZE 64
+#define CFG_TUD_ENDPOINT0_SIZE 64
 
+#ifndef CFG_TUD_CDC
 #define CFG_TUD_CDC 1
+#endif
+#ifndef CFG_TUD_MSC
 #define CFG_TUD_MSC 1
+#endif
+#ifndef CFG_TUD_HID
 #define CFG_TUD_HID 2
+#endif
+#ifndef CFG_TUD_MIDI
 #define CFG_TUD_MIDI 1
+#endif
+#ifndef CFG_TUD_VENDOR
 #define CFG_TUD_VENDOR 1
+#endif
+#ifndef CFG_TUD_VIDEO
+#define CFG_TUD_VIDEO 1 // number of video control interfaces
+#endif
+#ifndef CFG_TUD_VIDEO_STREAMING
+#define CFG_TUD_VIDEO_STREAMING 1 // number of video streaming interfaces
+#endif
+
+// video streaming endpoint buffer size
+#define CFG_TUD_VIDEO_STREAMING_EP_BUFSIZE 256
 
 // CDC FIFO size of TX and RX
 #define CFG_TUD_CDC_RX_BUFSIZE 256
@@ -113,6 +152,7 @@ extern "C" {
 #define CFG_TUH_CDC 1
 #define CFG_TUH_CDC_FTDI 1
 #define CFG_TUH_CDC_CP210X 1
+#define CFG_TUH_CDC_CH34X 1
 
 // RX & TX fifo size
 #define CFG_TUH_CDC_RX_BUFSIZE 128
@@ -126,7 +166,7 @@ extern "C" {
 // bit rate = 115200, 1 stop bit, no parity, 8 bit data width
 // This need Pico-PIO-USB at least 0.5.1
 #define CFG_TUH_CDC_LINE_CODING_ON_ENUM                                        \
-  { 115200, CDC_LINE_CONDING_STOP_BITS_1, CDC_LINE_CODING_PARITY_NONE, 8 }
+  { 115200, CDC_LINE_CODING_STOP_BITS_1, CDC_LINE_CODING_PARITY_NONE, 8 }
 
 #ifdef __cplusplus
 }

@@ -24,6 +24,11 @@
  * This file is part of the TinyUSB stack.
  */
 
+// ESP32 out-of-sync
+#ifdef ARDUINO_ARCH_ESP32
+#include "arduino/ports/esp32/tusb_config_esp32.h"
+#endif
+
 #include "tusb_option.h"
 
 #if (CFG_TUD_ENABLED && CFG_TUD_HID)
@@ -58,7 +63,7 @@ typedef struct
   tusb_hid_descriptor_hid_t const * hid_descriptor;
 } hidd_interface_t;
 
-CFG_TUSB_MEM_SECTION tu_static hidd_interface_t _hidd_itf[CFG_TUD_HID];
+CFG_TUD_MEM_SECTION tu_static hidd_interface_t _hidd_itf[CFG_TUD_HID];
 
 /*------------- Helpers -------------*/
 static inline uint8_t get_index_by_itfnum(uint8_t itf_num)

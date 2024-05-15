@@ -1,6 +1,6 @@
 #include <FastLED.h>
-#define NUM_LEDS 60
-#define DATA_PIN 6
+#define NUM_LEDS 60*5
+#define DATA_PIN 14
 #define NUM_COLORS 49
 
 CRGB leds[NUM_LEDS];
@@ -71,6 +71,12 @@ void setup() {
 
 //  delay(100);
 //  Serial.begin(9600);
+
+  // set pin D19 (A5) in high impedance mode so we can hook 
+  // the signal resistor onto this terminal on the break out board
+  // without interfering with the Ardiuno logic.
+  pinMode(19, INPUT);  
+  
   delay(50);
 
 }
@@ -151,13 +157,15 @@ void loop() {
 //  showStrip();
 
  
-  for (int i = 0; i < NUM_LEDS; i++) {
-    fill_solid(leds, NUM_LEDS, CRGB::Black);
-    leds[i] = getRandomColor();
-    showStrip();
-    delay(50);
-  }
+//  for (int i = 0; i < NUM_LEDS; i++) {
+//    fill_solid(leds, NUM_LEDS, CRGB::Black);
+//    leds[i] = getRandomColor();
+//    showStrip();
+//    delay(50);
+//  }
 
+  theaterChase(0x20/t77
+  , 0, 0, 50);
 }
 
 

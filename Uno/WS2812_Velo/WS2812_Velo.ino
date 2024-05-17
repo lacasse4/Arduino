@@ -2,10 +2,34 @@
 #define DATA_PIN 14
 #define SCALE_DOWN_SHIFT 4
 #define MAX_INTENSITY (SCALE_DOWN_SHIFT==0?255:256>>SCALE_DOWN_SHIFT)
-#define MS_DELAY 50
 
-#define NUM_LEDS 70
-CRGB leds[NUM_LEDS];
+#define MS_DELAY 50
+#define MS_FADE_OUT_DELAY 25
+#define MS_START_SEQUENCE_DELAY 250
+#define MS_ANIMATION_TIME 10000
+
+#define THEATER_CHASE_COUNT 31
+#define THEATER_CHASE_DELAY 50
+#define THEATER_CHASE_INCR   3
+
+#define KITT_EYE_SIZE 8
+#define KITT_SPEED_DELAY 10
+#define KITT_RETURN_DELAY 50
+
+#define CYLON_EYE_SIZE 4
+#define CYLON_SPEED_DELAY 10
+#define CYLON_RETURN_DELAY 50
+
+#define TWINKLE_DELAY 50
+#define TWINKLE_LEDS  10
+
+#define RUNNING_LIGHTS_DELAY 50 
+
+#define NUM_LEDS 69
+#define NUM_LEDS_MIN 21
+#define NUM_LEDS_MID 40
+#define NUM_LEDS_BUFF_SIZE (NUM_LEDS+20)  // just to be safe
+CRGB leds[NUM_LEDS_BUFF_SIZE];
 
 #define NUM_PRIMARY_COLORS 3
 CRGB primary_colors[NUM_PRIMARY_COLORS] = {
@@ -101,23 +125,23 @@ CRGB visible_colors[NUM_VISIBLE_COLORS] = {
   CRGB::Yellow,
 };
 
-CRGB get_random_color(CRGB color_array[], int n) {
-  int index = random(n);
-  return color_array[index];
-}
+unsigned long start_time;
+#define set_timer()   start_time = millis()
+#define check_timer() if (millis() - start_time > MS_ANIMATION_TIME) break
 
-#define get_random_primary_color()    get_random_color(primary_colors,NUM_PRIMARY_COLORS)
-#define get_random_seconddary_color() get_random_color(secondary_colors,NUM_SECONDARY_COLORS)
-#define get_random_simple_color()     get_random_color(simple_colors,NUM_SIMPLE_COLORS)
-#define get_random_visible_color()    get_random_color(visible_colors,NUM_VISIBLE_COLORS)
 
+// ***************************************************
+//                      SETUP
 // ***************************************************
 
 void setup() {
   FastLED.addLeds<WS2812, DATA_PIN, GRB>(leds, NUM_LEDS).setCorrection( TypicalLEDStrip );
   // FastLED.setMaxPowerInVoltsAndMilliamps(5,400);
 
-  // scale max luminosity to 1/8 of physical max
+  // scale max led luminosity to reduce power consumption
+  // All colors in color arrays have their Max luminosity scaled down 
+  // with a bitwise right shift of SCALE_DOWN_SHIFT.
+  
   scale_down_color_array(primary_colors,   NUM_PRIMARY_COLORS);
   scale_down_color_array(secondary_colors, NUM_SECONDARY_COLORS);
   scale_down_color_array(simple_colors,    NUM_SIMPLE_COLORS);
@@ -126,21 +150,40 @@ void setup() {
   // set pin D19 (A5) in high impedance mode so we can hook 
   // the signal resistor onto this terminal on the break out board
   // without interfering with the Ardiuno logic.
+  
   pinMode(19, INPUT);  
   delay(10);
 
-  Serial.begin(9600);
-  delay(10);
+//  Serial.begin(9600);
+//  delay(10);
 
 //  Serial.println(sin16(32768.0));    // -> 0                           === sin(pi   ou 180 deg)
 //  Serial.println(sin16(32768.0/2));  // -> 32645 (32645/32767 = 0,996) === sin(pi/2 ou  90 deg)
 //  Serial.println(sin16(32768.0/6));  // -> 16279 (16279/32767 = 0,497) === sin(pi/6 ou  30 deg) 
 //  Serial.println(sin16(32768.0/4));  // -> 23170 (23170/32767 = 0,707) === sin(pi/4 ou  45 deg)
 
-  start_sequence();
+  show_start_sequence();
 }
 
-// ***************************************************
+void show_start_sequence() {
+
+  // flash strip 3 times to show we are restarting
+  for (int i = 0; i < 3; i++) {
+    fill_solid(leds, NUM_LEDS, WHITE);
+    showStrip();
+    delay(MS_START_SEQUENCE_DELAY);
+    
+    fill_solid(leds, NUM_LEDS, BLACK);
+    showStrip();
+    delay(MS_START_SEQUENCE_DELAY);
+  }
+  
+  fill_solid(leds, NUM_LEDS, WHITE);
+  showStrip();
+  delay(MS_START_SEQUENCE_DELAY);
+  auto_fade_out();
+}
+
 
 // Scale down color by bitwise shifting each color component by SCALE_DOWN_SHIFT.
 // This is suitable when leds are used at night.
@@ -156,8 +199,6 @@ CRGB scale_down_color(CRGB color) {
   return color;
 }
 
-// ***************************************************
-
 void scale_down_color_array(CRGB color_array[], int n) {
   for (int i = 0; i < n; i++) {
     color_array[i] = scale_down_color(color_array[i]);
@@ -165,110 +206,110 @@ void scale_down_color_array(CRGB color_array[], int n) {
 } 
 
 // ***************************************************
-
-void start_sequence() {
-  for (int i = 0; i < 3; i++) {
-    fill_solid(leds, NUM_LEDS, WHITE);
-    showStrip();
-    delay(250);
-    
-    fill_solid(leds, NUM_LEDS, BLACK);
-    showStrip();
-    delay(250);
-  }
-  
-  fill_solid(leds, NUM_LEDS, WHITE);
-  showStrip();
-  delay(250);
-  fade_out(MS_DELAY/2);
-}
-
-// ***************************************************
+//                  MAIN LOOP
 // ***************************************************
 
-#define NUM_FUNCTIONS 9
+// array of "auto" functions (callable without parameter) 
+#define NUM_FUNCTIONS 11
 void (*display_functions[NUM_FUNCTIONS])() = {
-  auto_NewKITT,
-  auto_wipe_forward_and_erase,
-  auto_wipe_backward_and_erase,
-  auto_wipe_out_and_erase,
-  auto_wipe_in_and_erase,
-  auto_theater_chase_forth_and_back,
-  auto_wipe_forward,
-  two_colors,
-
+  auto_changing_colors,
+  auto_fire,
+  auto_meteor_rain,
+  auto_twinkle,
+  auto_two_colors_modulation,
+  auto_cylon_bounce,
+  auto_theater_chase_forward,
+  auto_theater_chase_backward,
+  auto_KITT_in_and_out,
+  auto_running_lights,
   auto_nope
-};
-
-void loop() {
-
-  for (int i = 0; i < NUM_FUNCTIONS; i++) {
-    display_functions[i]();
-  }
-
-}
-
-// ***************************************************
-// ***************************************************
+ };
 
 void auto_nope() {}
 
-void auto_chirp() {
-  chirp(get_random_simple_color());
+void loop() {
+    int index = random(NUM_FUNCTIONS);
+    display_functions[index]();
 }
 
-void auto_chirp2() {
-  chirp(get_random_simple_color());
+// ***************************************************
+
+CRGB get_random_color(CRGB color_array[], int n) {
+  int index = random(n);
+  return color_array[index];
 }
 
+#define get_random_primary_color()    get_random_color(primary_colors,NUM_PRIMARY_COLORS)
+#define get_random_seconddary_color() get_random_color(secondary_colors,NUM_SECONDARY_COLORS)
+#define get_random_simple_color()     get_random_color(simple_colors,NUM_SIMPLE_COLORS)
+#define get_random_visible_color()    get_random_color(visible_colors,NUM_VISIBLE_COLORS)
 
-void auto_theater_chase_forth_and_back() {
-  theater_chase_forth_and_back2 (get_random_simple_color(), 5);
+int get_random_pixel_index() {
+  return random(NUM_LEDS);
 }
 
-void auto_wipe_forward() {
-  wipe_forward(get_random_simple_color(), MS_DELAY);
-  auto_fade_out();
+int get_random_pixel_index_unbalanced() {
+  int range = random(3);
+  switch (range) {
+    case 0: return random(NUM_LEDS_MIN);
+    case 1: return random(NUM_LEDS_MID);
+    case 2: return random(NUM_LEDS);
+  }
 }
+
+// ***************************************************
+//                    FADE OUT
+// ***************************************************
 
 void auto_fade_out() {
-  fade_out(MS_DELAY);
+  fade_out(MS_FADE_OUT_DELAY);
 }
 
-void auto_wipe_forward_and_erase() {
-  wipe_forward(get_random_simple_color(), MS_DELAY);
-  wipe_forward(BLACK, MS_DELAY);
-}
- 
-void auto_wipe_backward_and_erase() {
-  wipe_backward(get_random_simple_color(), MS_DELAY);
-  wipe_backward(BLACK, MS_DELAY);
+void fade_out(int ms_delay) {
+  CRGB buff[NUM_LEDS_BUFF_SIZE];
+  float scale;
+
+  memcpy(buff, leds, sizeof(leds));
+
+  for (int i = MAX_INTENSITY; i >= 0 ; i=i-2) {
+    scale = (float)i / MAX_INTENSITY;
+    for (int j = 0; j < NUM_LEDS; j++) {
+      leds[j].r = scale * buff[j].r;
+      leds[j].g = scale * buff[j].g;
+      leds[j].b = scale * buff[j].b;
+    }    
+    showStrip();
+    delay(ms_delay);
+  }
 }
 
-
+// ***************************************************
+//                TWO COLORS MODULATION
 // ***************************************************
 
 #define MIN_PERIOD      1000  // in ms
 #define MAX_PERIOD      4000  // in ms
 #define TIME_INCREMENT  10    // in ms
 #define NO_COLOR        -1
-#define TOTAL_TIME      20000 // in ms
 #define SIN16_2_PI      65536
 #define SIN16_MOINS_PI_SUR_2  (65536>>2)
 
-void two_colors() {
-  byte intensity[3];
+void auto_two_colors_modulation() {
+  CRGB color;
   bool enabled[3];
   int ms_period[3];
   int ms_elapsed[3];
   int color_disabled;
   int color_to_disable;
   unsigned long start_time;
+  bool even_half;
 
   enabled[0] = true;
   enabled[1] = true;
   enabled[2] = false;
   color_disabled = 2;
+  color = BLACK;
+  even_half = random(2) == 0;
   
   for (int i = 0; i < 3; i++) {
     if (enabled[i]) {
@@ -279,14 +320,11 @@ void two_colors() {
       ms_period[i]  = 0;
       ms_elapsed[i] = 0;
     }
-    intensity[i]  = 0;
   }
-  
-  start_time = millis();
+
+  set_timer();
 
   while (1) {
-
-    if (millis() - start_time > TOTAL_TIME) break;
 
     // Check if a timer has elapsed. 
     // This will be the next color to disable.
@@ -318,59 +356,50 @@ void two_colors() {
       if (enabled[i]) {
         float angle = SIN16_2_PI*(float)ms_elapsed[i]/ms_period[i] + SIN16_MOINS_PI_SUR_2;
         uint16_t sin16_arg = (uint16_t)((long)angle % SIN16_2_PI);
-        intensity[i] = (byte)(MAX_INTENSITY*(1.0+(float)sin16(sin16_arg)/32767.0));
+        color.raw[i] = (byte)((MAX_INTENSITY>>1)*(1.0+(float)sin16(sin16_arg)/32767.0));
       }
-      setAll(intensity[0], intensity[1], intensity[2]);
+      set_half_strip(color, even_half);
       showStrip();
     }
 
     delay(TIME_INCREMENT);
+    check_timer();
   }
   
   fade_out(MS_DELAY);
 }
 
-// ***************************************************
-
-void chirp(CRGB color) {
-  int ms_delay = 1024;
-
-  fill_solid(leds, NUM_LEDS, BLACK);
-  showStrip();
-  delay(ms_delay);
-
-  for (int i = 0; i < 100; i ++) {
-    fill_solid(leds, NUM_LEDS, color);
-    showStrip();
-    delay(ms_delay);
-    fill_solid(leds, NUM_LEDS, BLACK);
-    showStrip();
-    delay(ms_delay);
-    ms_delay -= ms_delay * 0.10;
-    if (ms_delay <= 1) break;
+void set_half_strip(CRGB color, bool even) {
+  int start_index = even ? 0 : 1;
+  for (int i = start_index; i < NUM_LEDS; i=i+2) {
+    leds[i] = color;
   }
 }
 
-void chirp2(CRGB color) {
-  int ms_delay = 1024;
-
-  fill_solid(leds, NUM_LEDS, BLACK);
-  showStrip();
-  delay(ms_delay);
-
-  for (int i = 0; i < 100; i ++) {
-    fill_solid(leds, NUM_LEDS, color);
-    showStrip();
-    if (ms_delay <= 1 || i == 99) break;
-    delay(ms_delay);
-    fill_solid(leds, NUM_LEDS, BLACK);
-    showStrip();
-    delay(ms_delay);
-    ms_delay -= ms_delay * 0.10;
-  }
+void set_strip_odd_half(CRGB color) {
+  for (int i = 1; i < NUM_LEDS; i=i+2) leds[i] = color;
 }
 
+
+
 // ***************************************************
+//                        WIPE
+// ***************************************************
+
+void auto_wipe_forward() {
+  wipe_forward(get_random_simple_color(), MS_DELAY);
+  auto_fade_out();
+}
+
+void auto_wipe_forward_and_erase() {
+  wipe_forward(get_random_simple_color(), MS_DELAY);
+  wipe_forward(BLACK, MS_DELAY);
+}
+ 
+void auto_wipe_backward_and_erase() {
+  wipe_backward(get_random_simple_color(), MS_DELAY);
+  wipe_backward(BLACK, MS_DELAY);
+}
 
 void wipe_forward(const CRGB color, int ms_delay) {
   for(int i=0; i<NUM_LEDS; i++) {
@@ -379,8 +408,6 @@ void wipe_forward(const CRGB color, int ms_delay) {
       delay(ms_delay);
   }
 }
-
-// ***************************************************
 
 void wipe_backward(const CRGB color, int ms_delay) {
   int j = NUM_LEDS-1;
@@ -391,139 +418,70 @@ void wipe_backward(const CRGB color, int ms_delay) {
   }
 }
 
-
+// ***************************************************
+//                    THEATER CHASE
 // ***************************************************
 
-void wipe_from_middle(const CRGB color, int ms_delay) {
-  int j = (NUM_LEDS-1)/2;
-  int k =  NUM_LEDS/2;
-  for(int i=0; i<(NUM_LEDS+1)/2; i++) {
-      leds[j--] = color;
-      leds[k++] = color;
-      showStrip();
-      delay(ms_delay);
+void auto_theater_chase_forward() {
+  CRGB color = get_random_simple_color();
+  set_timer();
+  while(1) {
+    theater_chase_forward (color, THEATER_CHASE_DELAY, THEATER_CHASE_COUNT, true);
+    check_timer();
   }
+  theater_chase_forward(color, THEATER_CHASE_DELAY, THEATER_CHASE_DELAY, false);
+  auto_fade_out();
 }
 
-// ***************************************************
-
-void wipe_from_borders(const CRGB color, int ms_delay) {
-  int j = NUM_LEDS-1;
-  for(int i=0; i<NUM_LEDS/2+1; i++, j--) {
-      leds[i] = color;
-      leds[j] = color;
-      showStrip();
-      delay(ms_delay);
+void auto_theater_chase_backward() {
+  CRGB color = get_random_simple_color();
+  set_timer();
+  while(1) {
+    theater_chase_backward(color, THEATER_CHASE_DELAY, THEATER_CHASE_DELAY, true);
+    check_timer();
   }
+  theater_chase_backward(color, THEATER_CHASE_DELAY, THEATER_CHASE_DELAY, false);
+  auto_fade_out();
 }
 
-// ***************************************************
-
-void auto_wipe_out_and_erase() {
-  wipe_from_middle(get_random_simple_color(), MS_DELAY);
-  wipe_from_middle(BLACK, MS_DELAY);
-}
-
-// ***************************************************
-
-void auto_wipe_in_and_erase() {
-  wipe_from_borders(get_random_simple_color(), MS_DELAY);
-  wipe_from_borders(BLACK, MS_DELAY);
-}
-
-// ***************************************************
-
-void theater_chase_forth_and_back(CRGB color, int num_cycles) {
-  for (int i = 0; i < num_cycles; i++) {
-    theater_chase_forward (color, MS_DELAY, 20);
-    theater_chase_backward(color, MS_DELAY, 20);
-  }
-}
-
-void theater_chase_forth_and_back2(CRGB color, int num_cycles) {
-  for (int i = 0; i < num_cycles; i++) {
-    theater_chase_forward2 (color, MS_DELAY, 20);
-    theater_chase_backward2(color, MS_DELAY, 20);
-  }
-}
-
-// ***************************************************
-
-void theater_chase_forward(CRGB color, int ms_delay, int n) {
-  for (int j = 0; j < n; j++) {  
-    for (int q = 0; q < 3; q++) {
-      for (int i = 0; i < NUM_LEDS; i = i+3) {
-        set_pixel_color(i+q, color);        //turn every third pixel on
-      }
-      showStrip();
-     
-      delay(ms_delay);
-     
-      for (int i = 0; i < NUM_LEDS; i = i+3) {
-        set_pixel_color(i+q, BLACK);        //turn every third pixel off
-      }
-    }
-  }
-}
-
-void theater_chase_forward2(CRGB color, int ms_delay, int n) {
+void theater_chase_forward(CRGB color, int ms_delay, int n, bool erase_last) {
   int q = 0;
-  for (int j = 0; j < n; j++) {  
+  for (int j = 0; j < n; j++, q++) {  
     for (int i = 0; i < NUM_LEDS; i++) {
-      if ((i+q) % 3 == 0) set_pixel_color(i, color);   //turn every third pixel on
+      if ((i+q) % THEATER_CHASE_INCR == 0) {
+        set_pixel_color(i, color);  
+      }
     }
     
     showStrip();
     delay(ms_delay);
-
-    if (j == n-1) break;  // dont set led to black the last time around
-     
-    for (int i = 0; i < NUM_LEDS; i++) {
-      if ((i+q) % 3 == 0) set_pixel_color(i, BLACK);   //turn every third pixel on
-    }
-    q++;
+    
+    if (j == n-1 || !erase_last) break;
+    
+    fill_solid(leds, NUM_LEDS, BLACK);
   }
 }
+
+void theater_chase_backward(CRGB color, int ms_delay, int n, bool erase_last) {
+  int q = n + THEATER_CHASE_INCR - 1;
+  for (int j = 0; j < n; j++, q++) {  
+    for (int i = 0; i < NUM_LEDS; i++) {
+      if ((i+q) % THEATER_CHASE_INCR == 0) {
+        set_pixel_color(i, color);
+      }
+    }
+    showStrip();
+    delay(ms_delay);
+    
+    if (j == n-1 || !erase_last) break;
+    
+    fill_solid(leds, NUM_LEDS, BLACK);
+  }
+}
+
 
 // ***************************************************
-
-void theater_chase_backward(CRGB color, int ms_delay, int n) {
-  for (int j = 0; j < n; j++) {  
-    for (int q = 2; q >= 0; q--) {
-      for (int i = 0; i < NUM_LEDS; i = i+3) {
-        set_pixel_color(i+q, color);        //turn every third pixel on
-      }
-      showStrip();
-     
-      delay(ms_delay);
-     
-      for (int i = 0; i < NUM_LEDS; i = i+3) {
-        set_pixel_color(i+q, BLACK);        //turn every third pixel off
-      }
-    }
-  }
-}
-
-void theater_chase_backward2(CRGB color, int ms_delay, int n) {
-  int q = n+2;
-  for (int j = 0; j < n; j++) {  
-    for (int i = 0; i < NUM_LEDS; i++) {
-      if ((i+q) % 3 == 0) set_pixel_color(i, color);   //turn every third pixel on
-    }
-    
-    showStrip();
-    delay(ms_delay);
-
-    if (j == n-1) break;  // dont set led to black the last time around
-     
-    for (int i = 0; i < NUM_LEDS; i++) {
-      if ((i+q) % 3 == 0) set_pixel_color(i, BLACK);   //turn every third pixel on
-    }
-    q--;
-  }
-}
-
-
+//                FADE IN AND OUT
 // ***************************************************
 
 void auto_fade_in_out_color() {
@@ -537,8 +495,6 @@ void fade_in_out_color(const CRGB color, int ms_delay) {
   b = color.b;
   fade_in_out_components(r, g, b, ms_delay);
 }
-
-// ***************************************************
 
 void fade_in_out_components(byte red, byte green, byte blue, int ms_delay) {
   float r, g, b, scale;
@@ -565,74 +521,18 @@ void fade_in_out_components(byte red, byte green, byte blue, int ms_delay) {
 }
 
 // ***************************************************
-
-
-void fade_out(int ms_delay) {
-  CRGB buff[NUM_LEDS];
-  float scale;
-
-  memcpy(buff, leds, sizeof(leds));
-
-  for (int i = MAX_INTENSITY; i >= 0 ; i=i-2) {
-    scale = (float)i / MAX_INTENSITY;
-    for (int j = 0; j < NUM_LEDS; j++) {
-      leds[j].r = scale * buff[j].r;
-      leds[j].g = scale * buff[j].g;
-      leds[j].b = scale * buff[j].b;
-    }    
-    showStrip();
-    delay(ms_delay);
-  }
-}
-
+//                    CYLON BOUNCE
 // ***************************************************
 
-void fade_in(int ms_delay) {
-  CRGB buff[NUM_LEDS];
-  float scale;
-
-  memcpy(buff, leds, sizeof(leds));
-
-  for (int i = 0; i < MAX_INTENSITY ; i++) {
-    scale = (float)i / MAX_INTENSITY;
-    for (int j = 0; j < NUM_LEDS; j++) {
-      leds[j].r = scale * buff[j].r;
-      leds[j].g = scale * buff[j].g;
-      leds[j].b = scale * buff[j].b;
-    }    
-    showStrip();
-    delay(ms_delay);
+void auto_cylon_bounce() {
+  CRGB color;
+  set_timer();
+  while(1) {
+    color = get_random_simple_color();
+    CylonBounce(color.r, color.g, color.b, CYLON_EYE_SIZE, CYLON_SPEED_DELAY, CYLON_RETURN_DELAY);
+    check_timer();
   }
 }
-
-// ***************************************************
-
-void RGBLoop(){
-  for(int j = 0; j < 3; j++ ) {
-    // Fade IN
-    for(int k = 0; k < 256>>SCALE_DOWN_SHIFT; k++) {
-      switch(j) {
-        case 0: setAll(k,0,0); break;
-        case 1: setAll(0,k,0); break;
-        case 2: setAll(0,0,k); break;
-      }
-      showStrip();
-      delay(3*(2<<SCALE_DOWN_SHIFT)); 
-    }
-    // Fade OUT
-    for(int k = 256>>SCALE_DOWN_SHIFT-1; k >= 0; k--) {
-      switch(j) {
-        case 0: setAll(k,0,0); break;
-        case 1: setAll(0,k,0); break;
-        case 2: setAll(0,0,k); break;
-      }
-      showStrip();
-      delay(3*(2<<SCALE_DOWN_SHIFT));
-    }
-  }
-}
-
-// ***************************************************
 
 void CylonBounce(byte red, byte green, byte blue, int EyeSize, int SpeedDelay, int ReturnDelay){
 
@@ -664,33 +564,18 @@ void CylonBounce(byte red, byte green, byte blue, int EyeSize, int SpeedDelay, i
 }
 
 // ***************************************************
-
-void auto_NewKITT() {
-  CRGB color = get_random_simple_color();
-  NewKITT(color.r, color.g, color.b, 8, 10, 50);
-}
-
-void NewKITT(byte red, byte green, byte blue, int EyeSize, int SpeedDelay, int ReturnDelay){
-  Serial.println("RightToLeft");
-  RightToLeft(red, green, blue, EyeSize, SpeedDelay, ReturnDelay);
-  Serial.println("LeftToRight");
-  LeftToRight(red, green, blue, EyeSize, SpeedDelay, ReturnDelay);
-  Serial.println("OutsideToCenter");
-  OutsideToCenter(red, green, blue, EyeSize, SpeedDelay, ReturnDelay);
-  Serial.println("CenterToOutside");
-  CenterToOutside(red, green, blue, EyeSize, SpeedDelay, ReturnDelay);
-  Serial.println("LeftToRight");
-  LeftToRight(red, green, blue, EyeSize, SpeedDelay, ReturnDelay);
-  Serial.println("RightToLeft");
-  RightToLeft(red, green, blue, EyeSize, SpeedDelay, ReturnDelay);
-  Serial.println("OutsideToCenter");
-  OutsideToCenter(red, green, blue, EyeSize, SpeedDelay, ReturnDelay);
-  Serial.println("CenterToOutside");
-  CenterToOutside(red, green, blue, EyeSize, SpeedDelay, ReturnDelay);
-  Serial.println();
-}
-
+//                        KITT
 // ***************************************************
+
+void auto_KITT_in_and_out() {
+  set_timer();
+  while(1) {
+    CRGB color = get_random_simple_color();
+    OutsideToCenter(color.r, color.g, color.b, KITT_EYE_SIZE, KITT_SPEED_DELAY, KITT_RETURN_DELAY);    
+    CenterToOutside(color.r, color.g, color.b, KITT_EYE_SIZE, KITT_SPEED_DELAY, KITT_RETURN_DELAY);
+    check_timer();
+  }
+}
 
 void CenterToOutside(byte red, byte green, byte blue, int EyeSize, int SpeedDelay, int ReturnDelay) {
   for(int i =((NUM_LEDS-EyeSize)/2); i>=0; i--) {
@@ -738,53 +623,32 @@ void OutsideToCenter(byte red, byte green, byte blue, int EyeSize, int SpeedDela
   delay(ReturnDelay);
 }
 
+
 // ***************************************************
 
-void LeftToRight(byte red, byte green, byte blue, int EyeSize, int SpeedDelay, int ReturnDelay) {
-  for(int i = 0; i < NUM_LEDS-EyeSize-2; i++) {
-    setAll(0,0,0);
-    setPixel(i, red/10, green/10, blue/10);
-    for(int j = 1; j <= EyeSize; j++) {
-      setPixel(i+j, red, green, blue);
-    }
-    setPixel(i+EyeSize+1, red/10, green/10, blue/10);
+void auto_twinkle() {
+  CRGB color = get_random_simple_color();
+  int lit_leds[TWINKLE_LEDS];
+  int to_turn_on  = 0;
+  int to_turn_off = 1;
+  
+  setAll(0, 0, 0);
+  for (int i = 0; i < TWINKLE_LEDS; i++) lit_leds[i] = 0;
+  
+  set_timer();
+  while(1) {
+    lit_leds[to_turn_on] = get_random_pixel_index();
+    set_pixel_color(lit_leds[to_turn_on], color);
     showStrip();
-    delay(SpeedDelay);
+    
+    set_pixel_color(lit_leds[to_turn_off], BLACK);
+    to_turn_on  = (to_turn_on+1)  % TWINKLE_LEDS;
+    to_turn_off = (to_turn_off+1) % TWINKLE_LEDS;
+
+    delay(TWINKLE_DELAY);    
+    check_timer();
   }
-  delay(ReturnDelay);
-}
-
-// ***************************************************
-
-void RightToLeft(byte red, byte green, byte blue, int EyeSize, int SpeedDelay, int ReturnDelay) {
-  for(int i = NUM_LEDS-EyeSize-2; i > 0; i--) {
-    setAll(0,0,0);
-    setPixel(i, red/10, green/10, blue/10);
-    for(int j = 1; j <= EyeSize; j++) {
-      setPixel(i+j, red, green, blue);
-    }
-    setPixel(i+EyeSize+1, red/10, green/10, blue/10);
-    showStrip();
-    delay(SpeedDelay);
-  }
-  delay(ReturnDelay);
-}
-
-// ***************************************************
-
-void Twinkle(byte red, byte green, byte blue, int Count, int SpeedDelay, boolean OnlyOne) {
-  setAll(0,0,0);
- 
-  for (int i=0; i<Count; i++) {
-     setPixel(random(NUM_LEDS),red,green,blue);
-     showStrip();
-     delay(SpeedDelay);
-     if(OnlyOne) {
-       setAll(0,0,0);
-     }
-   }
- 
-  delay(SpeedDelay);
+  auto_fade_out();
 }
 
 // ***************************************************
@@ -820,25 +684,44 @@ void Sparkle(byte red, byte green, byte blue, int SpeedDelay) {
 
 // ***************************************************
 
-void RunningLights(byte red, byte green, byte blue, int WaveDelay) {
-  int Position=0;
- 
-  for(int j=0; j<NUM_LEDS*2; j++)
-  {
-      Position++; // = 0; //Position + Rate;
-      for(int i=0; i<NUM_LEDS; i++) {
-        // sine wave, 3 offset waves make a rainbow!
-        //float level = sin(i+Position) * 127 + 128;
-        //setPixel(i,level,0,0);
-        //float level = sin(i+Position) * 127 + 128;
-        setPixel(i,((sin(i+Position) * 127 + 128)/255)*red,
-                   ((sin(i+Position) * 127 + 128)/255)*green,
-                   ((sin(i+Position) * 127 + 128)/255)*blue);
-      }
-     
-      showStrip();
-      delay(WaveDelay);
+void auto_running_lights() {
+  int position = 0;
+  CRGB color = get_random_simple_color();
+
+  set_timer();
+  while(1) {
+    position++; // = 0; //Position + Rate;
+    for(int i = 0; i < NUM_LEDS; i++) {
+      setPixel(i,((sin(i+position+1) * 127 + 128)/255)*color.r,
+                 ((sin(i+position)   * 127 + 128)/255)*color.g,
+                 ((sin(i+position-1) * 127 + 128)/255)*color.b);
+    }
+    showStrip();
+    delay(RUNNING_LIGHTS_DELAY);
+    check_timer();
   }
+  auto_fade_out();
+}
+
+
+void auto_changing_colors() {
+  CRGB color = get_random_simple_color();
+  float phase[3] = {0.0};
+  set_timer();
+  while(1) {
+    for(int i = 0; i < NUM_LEDS; i++) {
+      setPixel(i,((sin(i+phase[0]) * 127 + 128)/255)*color.r,
+                 ((sin(i+phase[1])   * 127 + 128)/255)*color.g,
+                 ((sin(i+phase[2]) * 127 + 128)/255)*color.b);
+    }
+    showStrip();
+    delay(RUNNING_LIGHTS_DELAY);
+    phase[0] += 0.1;
+    phase[1] += 0.2;
+    phase[2] += 0.3;
+    check_timer();
+  }
+  auto_fade_out();
 }
 
 // ***************************************************
@@ -899,7 +782,7 @@ void theaterChaseRainbow(int SpeedDelay) {
   for (int j=0; j < 256; j++) {     // cycle all 256 colors in the wheel
     for (int q=0; q < 3; q++) {
         for (int i=0; i < NUM_LEDS; i=i+3) {
-          c = Wheel1( (i+j) % 255);
+          c = Wheel( (i+j) % 255);
           setPixel(i+q, *c, *(c+1), *(c+2));    //turn every third pixel on
         }
         showStrip();
@@ -913,40 +796,22 @@ void theaterChaseRainbow(int SpeedDelay) {
   }
 }
 
+
 // ***************************************************
 
-byte * Wheel1(byte WheelPos) {
-  static byte c[3];
- 
-  if(WheelPos < 85) {
-   c[0]=WheelPos * 3;
-   c[1]=255 - WheelPos * 3;
-   c[2]=0;
-  } else if(WheelPos < 170) {
-   WheelPos -= 85;
-   c[0]=255 - WheelPos * 3;
-   c[1]=0;
-   c[2]=WheelPos * 3;
-  } else {
-   WheelPos -= 170;
-   c[0]=0;
-   c[1]=WheelPos * 3;
-   c[2]=255 - WheelPos * 3;
+void auto_fire() {
+  set_timer();
+  while(1) {
+    Fire(55,120,15);
+    check_timer();
   }
-
-  return c;
-}
-
-// ***************************************************
-
-void FireLoop() {
-  for (int i=0; i < 500; i++) Fire(55,120,15);
+  auto_fade_out();
 }
 
 // ***************************************************
 
 void Fire(int Cooling, int Sparking, int SpeedDelay) {
-  static byte heat[NUM_LEDS];
+  static byte heat[NUM_LEDS_BUFF_SIZE];
   int cooldown;
  
   // Step 1.  Cool down every cell a little
@@ -968,7 +833,8 @@ void Fire(int Cooling, int Sparking, int SpeedDelay) {
   // Step 3.  Randomly ignite new 'sparks' near the bottom
   if( random(255) < Sparking ) {
     int y = random(7);
-    heat[y] = heat[y] + random(160,255);
+    heat[y] = heat[y] + random(0x20,0x40);
+    //heat[y] = heat[y] + random(160,255);
     //heat[y] = random(160,255);
   }
 
@@ -1002,6 +868,14 @@ void setPixelHeatColor (int Pixel, byte temperature) {
 }
 
 // ***************************************************
+
+void auto_meteor_rain() {
+  set_timer();
+  while(1) {
+    meteorRain(MAX_INTENSITY, MAX_INTENSITY, MAX_INTENSITY, 5, 64, true, 30);
+    check_timer();
+  }
+}
 
 void meteorRain(byte red, byte green, byte blue, byte meteorSize, byte meteorTrailDecay, boolean meteorRandomDecay, int SpeedDelay) {  
   setAll(0,0,0);
@@ -1071,22 +945,23 @@ void showStrip() {
  #endif
 }
 
-void setPixel(int Pixel, byte red, byte green, byte blue) {
-  if (Pixel >= NUM_LEDS || Pixel < 0) return;
+void setPixel(int pixel_index, byte red, byte green, byte blue) {
+  if (pixel_index >= NUM_LEDS || pixel_index < 0) return;
  #ifdef ADAFRUIT_NEOPIXEL_H
    // NeoPixel
-   strip.setPixelColor(Pixel, strip.Color(red, green, blue));
+   strip.setPixelColor(pixel_index, strip.Color(red, green, blue));
  #endif
  #ifndef ADAFRUIT_NEOPIXEL_H
    // FastLED
-   leds[Pixel].r = red;
-   leds[Pixel].g = green;
-   leds[Pixel].b = blue;
+   leds[pixel_index].r = red;
+   leds[pixel_index].g = green;
+   leds[pixel_index].b = blue;
  #endif
 }
 
-void set_pixel_color(int pixel, CRGB color) {
-  leds[pixel] = color;
+void set_pixel_color(int pixel_index, CRGB color) {
+  if (pixel_index >= NUM_LEDS || pixel_index < 0) return;
+  leds[pixel_index] = color;
 }
 
 void setAll(byte red, byte green, byte blue) {
@@ -1520,4 +1395,207 @@ void loop() {
 //  }
   RGBLoop();
 }
+*/
+
+// ***************************************************
+// Unused functions
+// ***************************************************
+
+/*
+
+// ***************************************************
+
+void auto_chirp() {
+  chirp(get_random_simple_color());
+}
+
+void auto_chirp2() {
+  chirp(get_random_simple_color());
+}
+
+void chirp(CRGB color) {
+  int ms_delay = 1024;
+
+  fill_solid(leds, NUM_LEDS, BLACK);
+  showStrip();
+  delay(ms_delay);
+
+  for (int i = 0; i < 100; i ++) {
+    fill_solid(leds, NUM_LEDS, color);
+    showStrip();
+    delay(ms_delay);
+    fill_solid(leds, NUM_LEDS, BLACK);
+    showStrip();
+    delay(ms_delay);
+    ms_delay -= ms_delay * 0.10;
+    if (ms_delay <= 1) break;
+  }
+}
+
+void chirp2(CRGB color) {
+  int ms_delay = 1024;
+
+  fill_solid(leds, NUM_LEDS, BLACK);
+  showStrip();
+  delay(ms_delay);
+
+  for (int i = 0; i < 100; i ++) {
+    fill_solid(leds, NUM_LEDS, color);
+    showStrip();
+    if (ms_delay <= 1 || i == 99) break;
+    delay(ms_delay);
+    fill_solid(leds, NUM_LEDS, BLACK);
+    showStrip();
+    delay(ms_delay);
+    ms_delay -= ms_delay * 0.10;
+  }
+}
+
+// ***************************************************
+
+void auto_wipe_out_and_erase() {
+  wipe_from_middle(get_random_simple_color(), MS_DELAY);
+  wipe_from_middle(BLACK, MS_DELAY);
+}
+
+void auto_wipe_in_and_erase() {
+  wipe_from_borders(get_random_simple_color(), MS_DELAY);
+  wipe_from_borders(BLACK, MS_DELAY);
+}
+
+void wipe_from_middle(const CRGB color, int ms_delay) {
+  int j = (NUM_LEDS-1)/2;
+  int k =  NUM_LEDS/2;
+  for(int i=0; i<(NUM_LEDS+1)/2; i++) {
+      leds[j--] = color;
+      leds[k++] = color;
+      showStrip();
+      delay(ms_delay);
+  }
+}
+
+void wipe_from_borders(const CRGB color, int ms_delay) {
+  int j = NUM_LEDS-1;
+  for(int i=0; i<NUM_LEDS/2+1; i++, j--) {
+      leds[i] = color;
+      leds[j] = color;
+      showStrip();
+      delay(ms_delay);
+  }
+}
+
+// ***************************************************
+
+void RGBLoop(){
+  for(int j = 0; j < 3; j++ ) {
+    // Fade IN
+    for(int k = 0; k < 256>>SCALE_DOWN_SHIFT; k++) {
+      switch(j) {
+        case 0: setAll(k,0,0); break;
+        case 1: setAll(0,k,0); break;
+        case 2: setAll(0,0,k); break;
+      }
+      showStrip();
+      delay(3*(2<<SCALE_DOWN_SHIFT)); 
+    }
+    // Fade OUT
+    for(int k = 256>>SCALE_DOWN_SHIFT-1; k >= 0; k--) {
+      switch(j) {
+        case 0: setAll(k,0,0); break;
+        case 1: setAll(0,k,0); break;
+        case 2: setAll(0,0,k); break;
+      }
+      showStrip();
+      delay(3*(2<<SCALE_DOWN_SHIFT));
+    }
+  }
+}
+
+// ***************************************************
+
+void auto_NewKITT() {
+  CRGB color = get_random_simple_color();
+  set_timer();
+  while(1) {
+    NewKITT(color.r, color.g, color.b, KITT_EYE_SIZE, KITT_SPEED_DELAY, KITT_RETURN_DELAY);
+    check_timer();
+  }
+}
+
+void auto_KITT_forth_and_back() {
+  set_timer();
+  while(1) {
+    CRGB color = get_random_simple_color();
+    LeftToRight(color.r, color.g, color.b, KITT_EYE_SIZE, KITT_SPEED_DELAY, KITT_RETURN_DELAY);    
+    RightToLeft(color.r, color.g, color.b, KITT_EYE_SIZE, KITT_SPEED_DELAY, KITT_RETURN_DELAY);
+    check_timer();
+  }
+}
+
+void NewKITT(byte red, byte green, byte blue, int EyeSize, int SpeedDelay, int ReturnDelay){
+  RightToLeft(red, green, blue, EyeSize, SpeedDelay, ReturnDelay);
+  LeftToRight(red, green, blue, EyeSize, SpeedDelay, ReturnDelay);
+  OutsideToCenter(red, green, blue, EyeSize, SpeedDelay, ReturnDelay);
+  CenterToOutside(red, green, blue, EyeSize, SpeedDelay, ReturnDelay);
+  LeftToRight(red, green, blue, EyeSize, SpeedDelay, ReturnDelay);
+  RightToLeft(red, green, blue, EyeSize, SpeedDelay, ReturnDelay);
+  OutsideToCenter(red, green, blue, EyeSize, SpeedDelay, ReturnDelay);
+  CenterToOutside(red, green, blue, EyeSize, SpeedDelay, ReturnDelay);
+}
+
+void LeftToRight(byte red, byte green, byte blue, int EyeSize, int SpeedDelay, int ReturnDelay) {
+  for(int i = 0; i < NUM_LEDS-EyeSize-2; i++) {
+    setAll(0,0,0);
+    setPixel(i, red/10, green/10, blue/10);
+    for(int j = 1; j <= EyeSize; j++) {
+      setPixel(i+j, red, green, blue);
+    }
+    setPixel(i+EyeSize+1, red/10, green/10, blue/10);
+    showStrip();
+    delay(SpeedDelay);
+  }
+  delay(ReturnDelay);
+}
+
+void RightToLeft(byte red, byte green, byte blue, int EyeSize, int SpeedDelay, int ReturnDelay) {
+  for(int i = NUM_LEDS-EyeSize-2; i > 0; i--) {
+    setAll(0,0,0);
+    setPixel(i, red/10, green/10, blue/10);
+    for(int j = 1; j <= EyeSize; j++) {
+      setPixel(i+j, red, green, blue);
+    }
+    setPixel(i+EyeSize+1, red/10, green/10, blue/10);
+    showStrip();
+    delay(SpeedDelay);
+  }
+  delay(ReturnDelay);
+}
+
+// ***************************************************
+
+
+void auto_theater_chase_forth_and_back() {
+  theater_chase_forth_and_back(get_random_simple_color(), THEATER_CHASE_DELAY);
+  auto_fade_out();
+}
+
+void theater_chase_forth_and_back(CRGB color, int ms_delay) {
+  set_timer();
+  while(1) {
+    theater_chase_forward (color, ms_delay, THEATER_CHASE_COUNT);
+    theater_chase_backward_no_erase(color, ms_delay, THEATER_CHASE_COUNT);
+    check_timer();
+  }
+}
+
+void theater_chase_back_and_forth(CRGB color, int ms_delay, int num_cycles) {
+  set_timer();
+  while(1) {
+    theater_chase_backward(color, ms_delay, THEATER_CHASE_COUNT);
+    theater_chase_forward_no_erase (color, ms_delay, THEATER_CHASE_COUNT);
+    check_timer();
+  }
+}
+
+
 */

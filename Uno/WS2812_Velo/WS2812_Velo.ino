@@ -6,7 +6,10 @@
 #define MS_DELAY 50
 #define MS_FADE_OUT_DELAY 25
 #define MS_START_SEQUENCE_DELAY 250
-#define MS_ANIMATION_TIME 10000
+
+#define MS_ANIMATION_TIME_SHORT 10000
+#define MS_ANIMATION_TIME_LONG  20000
+#define MS_ANIMATION_TIME_EXTRA 40000
 
 #define THEATER_CHASE_COUNT 31
 #define THEATER_CHASE_DELAY 50
@@ -127,7 +130,7 @@ CRGB visible_colors[NUM_VISIBLE_COLORS] = {
 
 unsigned long start_time;
 #define set_timer()   start_time = millis()
-#define check_timer() if (millis() - start_time > MS_ANIMATION_TIME) break
+#define check_timer(x) if (millis() - start_time > x) break
 
 
 // ***************************************************
@@ -210,7 +213,7 @@ void scale_down_color_array(CRGB color_array[], int n) {
 // ***************************************************
 
 // array of "auto" functions (callable without parameter) 
-#define NUM_FUNCTIONS 11
+#define NUM_FUNCTIONS 14
 void (*display_functions[NUM_FUNCTIONS])() = {
   auto_changing_colors,
   auto_fire,
@@ -222,6 +225,9 @@ void (*display_functions[NUM_FUNCTIONS])() = {
   auto_theater_chase_backward,
   auto_KITT_in_and_out,
   auto_running_lights,
+  auto_cylon_slow_bounce,
+  auto_KITT_in_and_out_slow,
+  auto_meteor_rain_reversed,
   auto_nope
  };
 
@@ -363,7 +369,7 @@ void auto_two_colors_modulation() {
     }
 
     delay(TIME_INCREMENT);
-    check_timer();
+    check_timer(MS_ANIMATION_TIME_LONG);
   }
   
   fade_out(MS_DELAY);
@@ -427,7 +433,8 @@ void auto_theater_chase_forward() {
   set_timer();
   while(1) {
     theater_chase_forward (color, THEATER_CHASE_DELAY, THEATER_CHASE_COUNT, true);
-    check_timer();
+    showStrip();
+    check_timer(MS_ANIMATION_TIME_SHORT);
   }
   theater_chase_forward(color, THEATER_CHASE_DELAY, THEATER_CHASE_DELAY, false);
   auto_fade_out();
@@ -438,7 +445,8 @@ void auto_theater_chase_backward() {
   set_timer();
   while(1) {
     theater_chase_backward(color, THEATER_CHASE_DELAY, THEATER_CHASE_DELAY, true);
-    check_timer();
+    showStrip();
+    check_timer(MS_ANIMATION_TIME_SHORT);
   }
   theater_chase_backward(color, THEATER_CHASE_DELAY, THEATER_CHASE_DELAY, false);
   auto_fade_out();
@@ -530,8 +538,20 @@ void auto_cylon_bounce() {
   while(1) {
     color = get_random_simple_color();
     CylonBounce(color.r, color.g, color.b, CYLON_EYE_SIZE, CYLON_SPEED_DELAY, CYLON_RETURN_DELAY);
-    check_timer();
+    check_timer(MS_ANIMATION_TIME_LONG);
   }
+  auto_fade_out();
+}
+
+void auto_cylon_slow_bounce() {
+  CRGB color;
+  set_timer();
+  while(1) {
+    color = get_random_simple_color();
+    CylonBounce(color.r, color.g, color.b, CYLON_EYE_SIZE, CYLON_SPEED_DELAY*4, CYLON_RETURN_DELAY);
+    check_timer(MS_ANIMATION_TIME_EXTRA);
+  }
+  auto_fade_out();
 }
 
 void CylonBounce(byte red, byte green, byte blue, int EyeSize, int SpeedDelay, int ReturnDelay){
@@ -573,8 +593,20 @@ void auto_KITT_in_and_out() {
     CRGB color = get_random_simple_color();
     OutsideToCenter(color.r, color.g, color.b, KITT_EYE_SIZE, KITT_SPEED_DELAY, KITT_RETURN_DELAY);    
     CenterToOutside(color.r, color.g, color.b, KITT_EYE_SIZE, KITT_SPEED_DELAY, KITT_RETURN_DELAY);
-    check_timer();
+    check_timer(MS_ANIMATION_TIME_LONG);
   }
+  auto_fade_out();
+}
+
+void auto_KITT_in_and_out_slow() {
+  set_timer();
+  while(1) {
+    CRGB color = get_random_simple_color();
+    OutsideToCenter(color.r, color.g, color.b, KITT_EYE_SIZE, KITT_SPEED_DELAY*4, KITT_RETURN_DELAY);    
+    CenterToOutside(color.r, color.g, color.b, KITT_EYE_SIZE, KITT_SPEED_DELAY*4, KITT_RETURN_DELAY);
+    check_timer(MS_ANIMATION_TIME_EXTRA);
+  }
+  auto_fade_out();
 }
 
 void CenterToOutside(byte red, byte green, byte blue, int EyeSize, int SpeedDelay, int ReturnDelay) {
@@ -646,7 +678,7 @@ void auto_twinkle() {
     to_turn_off = (to_turn_off+1) % TWINKLE_LEDS;
 
     delay(TWINKLE_DELAY);    
-    check_timer();
+    check_timer(MS_ANIMATION_TIME_EXTRA);
   }
   auto_fade_out();
 }
@@ -698,7 +730,7 @@ void auto_running_lights() {
     }
     showStrip();
     delay(RUNNING_LIGHTS_DELAY);
-    check_timer();
+    check_timer(MS_ANIMATION_TIME_EXTRA);
   }
   auto_fade_out();
 }
@@ -719,7 +751,7 @@ void auto_changing_colors() {
     phase[0] += 0.1;
     phase[1] += 0.2;
     phase[2] += 0.3;
-    check_timer();
+    check_timer(MS_ANIMATION_TIME_EXTRA);
   }
   auto_fade_out();
 }
@@ -803,7 +835,7 @@ void auto_fire() {
   set_timer();
   while(1) {
     Fire(55,120,15);
-    check_timer();
+    check_timer(MS_ANIMATION_TIME_SHORT);
   }
   auto_fade_out();
 }
@@ -833,8 +865,7 @@ void Fire(int Cooling, int Sparking, int SpeedDelay) {
   // Step 3.  Randomly ignite new 'sparks' near the bottom
   if( random(255) < Sparking ) {
     int y = random(7);
-    heat[y] = heat[y] + random(0x20,0x40);
-    //heat[y] = heat[y] + random(160,255);
+    heat[y] = heat[y] + random(160,255);
     //heat[y] = random(160,255);
   }
 
@@ -855,13 +886,13 @@ void setPixelHeatColor (int Pixel, byte temperature) {
  
   // calculate ramp up from
   byte heatramp = t192 & 0x3F; // 0..63
-  heatramp <<= 2; // scale up to 0..252
+  // heatramp <<= 2; // scale up to 0..252
  
   // figure out which third of the spectrum we're in:
   if( t192 > 0x80) {                     // hottest
-    setPixel(Pixel, 255, 255, heatramp);
+    setPixel(Pixel, 0x40, 0x40, heatramp);
   } else if( t192 > 0x40 ) {             // middle
-    setPixel(Pixel, 255, heatramp, 0);
+    setPixel(Pixel, 040, heatramp, 0);
   } else {                               // coolest
     setPixel(Pixel, heatramp, 0, 0);
   }
@@ -872,12 +903,22 @@ void setPixelHeatColor (int Pixel, byte temperature) {
 void auto_meteor_rain() {
   set_timer();
   while(1) {
-    meteorRain(MAX_INTENSITY, MAX_INTENSITY, MAX_INTENSITY, 5, 64, true, 30);
-    check_timer();
+    meteorRain(MAX_INTENSITY, MAX_INTENSITY, MAX_INTENSITY, 5, 64, true, 30, false);
+    check_timer(MS_ANIMATION_TIME_SHORT);
   }
 }
 
-void meteorRain(byte red, byte green, byte blue, byte meteorSize, byte meteorTrailDecay, boolean meteorRandomDecay, int SpeedDelay) {  
+void auto_meteor_rain_reversed() {
+  set_timer();
+  while(1) {
+    meteorRain(MAX_INTENSITY, MAX_INTENSITY, MAX_INTENSITY, 5, 64, true, 30, true);
+    check_timer(MS_ANIMATION_TIME_SHORT);
+  }  
+}
+
+void meteorRain(byte red, byte green, byte blue, byte meteorSize, 
+                byte meteorTrailDecay, boolean meteorRandomDecay, 
+                int SpeedDelay, bool reversed) {  
   setAll(0,0,0);
  
   for(int i = 0; i < NUM_LEDS+NUM_LEDS; i++) {
@@ -897,7 +938,12 @@ void meteorRain(byte red, byte green, byte blue, byte meteorSize, byte meteorTra
       }
     }
    
-    showStrip();
+    if (reversed) {
+      show_strip_reversed();
+    }
+    else {
+      showStrip();      
+    }
     delay(SpeedDelay);
   }
 }
@@ -929,6 +975,53 @@ void fadeToBlack(int ledNo, byte fadeValue) {
 }
 
 // ***************************************************
+
+/*
+void auto_halloween_eyes() {
+  HalloweenEyes(0xff, 0x00, 0x00, 1, 4, true, random(5,50), random(50,150), random(1000, 10000));  
+  HalloweenEyes(0xff, 0x00, 0x00, 1, 4, true, random(5,50), random(50,150), random(1000, 10000));  
+}
+ 
+void HalloweenEyes(byte red, byte green, byte blue,
+                   int EyeWidth, int EyeSpace,
+                   boolean Fade, int Steps, int FadeDelay,
+                   int EndPause){
+ 
+  int i;
+  int StartPoint  = random( 0, NUM_LEDS - (2*EyeWidth) - EyeSpace );
+  int Start2ndEye = StartPoint + EyeWidth + EyeSpace;
+ 
+  for(i = 0; i < EyeWidth; i++) {
+    setPixel(StartPoint + i, red, green, blue);
+    setPixel(Start2ndEye + i, red, green, blue);
+  }
+ 
+  showStrip();
+ 
+  if(Fade==true) {
+    float r, g, b;
+ 
+    for(int j = Steps; j >= 0; j--) {
+      r = j*(red/Steps);
+      g = j*(green/Steps);
+      b = j*(blue/Steps);
+     
+      for(i = 0; i < EyeWidth; i++) {
+        setPixel(StartPoint + i, r, g, b);
+        setPixel(Start2ndEye + i, r, g, b);
+      }
+     
+      showStrip();
+      delay(FadeDelay);
+    }
+  }
+ 
+  setAll(0,0,0); // Set all black
+ 
+  delay(EndPause);
+}
+*/
+
 // ***************************************************
 // ***************************************************
 
@@ -943,6 +1036,16 @@ void showStrip() {
    // FastLED
    FastLED.show();
  #endif
+}
+
+void show_strip_reversed() {
+  CRGB temp;
+  for (int i = 0, j = NUM_LEDS-1; i < NUM_LEDS/2 + 1; i++, j--) {
+    temp = leds[i];
+    leds[i] = leds[j];
+    leds[j] = temp;
+  }
+  FastLED.show();
 }
 
 void setPixel(int pixel_index, byte red, byte green, byte blue) {

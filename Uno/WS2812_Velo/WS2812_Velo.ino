@@ -11,26 +11,27 @@
 #define MS_ANIMATION_TIME_LONG  20000
 #define MS_ANIMATION_TIME_EXTRA 40000
 
-#define THEATER_CHASE_COUNT 31
+#define THEATER_CHASE_COUNT 10
 #define THEATER_CHASE_DELAY 50
 #define THEATER_CHASE_INCR   3
 
-#define KITT_EYE_SIZE 8
+#define KITT_EYE_SIZE 6
 #define KITT_SPEED_DELAY 10
 #define KITT_RETURN_DELAY 50
 
-#define CYLON_EYE_SIZE 4
+#define CYLON_EYE_SIZE 3
 #define CYLON_SPEED_DELAY 10
 #define CYLON_RETURN_DELAY 50
 
 #define TWINKLE_DELAY 50
-#define TWINKLE_LEDS  10
+#define TWINKLE_LEDS  5
 
-#define RUNNING_LIGHTS_DELAY 50 
+#define RUNNING_LIGHTS_DELAY 100 
+#define RAINBOW_CYCLE_DELAY 10
 
-#define NUM_LEDS 69
-#define NUM_LEDS_MIN 21
-#define NUM_LEDS_MID 40
+#define NUM_LEDS 40
+#define NUM_LEDS_MIN 15
+#define NUM_LEDS_MID 30
 #define NUM_LEDS_BUFF_SIZE (NUM_LEDS+20)  // just to be safe
 CRGB leds[NUM_LEDS_BUFF_SIZE];
 
@@ -129,8 +130,8 @@ CRGB visible_colors[NUM_VISIBLE_COLORS] = {
 };
 
 unsigned long start_time;
-#define set_timer()   start_time = millis()
-#define check_timer(x) if (millis() - start_time > x) break
+#define set_timer()                       start_time = millis()
+#define break_on_timer_elapsed(ms_delay)  if (millis() - start_time > ms_delay) break
 
 
 // ***************************************************
@@ -213,29 +214,54 @@ void scale_down_color_array(CRGB color_array[], int n) {
 // ***************************************************
 
 // array of "auto" functions (callable without parameter) 
-#define NUM_FUNCTIONS 14
+#define NUM_FUNCTIONS 33
 void (*display_functions[NUM_FUNCTIONS])() = {
   auto_changing_colors,
-  auto_fire,
-  auto_meteor_rain,
+  auto_changing_colors,
+  auto_changing_colors,
   auto_twinkle,
+  auto_twinkle,
+  auto_twinkle,
+  auto_fire,
+  auto_fire_reversed,
+  auto_meteor_rain,
+  auto_meteor_rain_reversed,
   auto_two_colors_modulation,
   auto_cylon_bounce,
   auto_theater_chase_forward,
   auto_theater_chase_backward,
   auto_KITT_in_and_out,
+  auto_KITT_out_and_in,
+  auto_running_lights,
+  auto_running_lights,
   auto_running_lights,
   auto_cylon_slow_bounce,
+  auto_cylon_slow_bounce,
+  auto_cylon_slow_bounce,
   auto_KITT_in_and_out_slow,
-  auto_meteor_rain_reversed,
+  auto_KITT_in_and_out_slow,
+  auto_KITT_in_and_out_slow,
+  auto_KITT_out_and_in_slow,
+  auto_KITT_out_and_in_slow,
+  auto_KITT_out_and_in_slow,
+  auto_theater_chase_rainbow,
+  auto_rainbow_cycle,
+  auto_rainbow_cycle,
+  auto_rainbow_cycle,
   auto_nope
  };
 
 void auto_nope() {}
 
 void loop() {
-    int index = random(NUM_FUNCTIONS);
-    display_functions[index]();
+
+  
+  int index = random(NUM_FUNCTIONS);
+  display_functions[index](); 
+
+
+  // for (int i = 0; i < NUM_FUNCTIONS; i++) display_functions[i]();
+
 }
 
 // ***************************************************
@@ -308,14 +334,12 @@ void auto_two_colors_modulation() {
   int color_disabled;
   int color_to_disable;
   unsigned long start_time;
-  bool even_half;
 
   enabled[0] = true;
   enabled[1] = true;
   enabled[2] = false;
   color_disabled = 2;
   color = BLACK;
-  even_half = random(2) == 0;
   
   for (int i = 0; i < 3; i++) {
     if (enabled[i]) {
@@ -364,15 +388,21 @@ void auto_two_colors_modulation() {
         uint16_t sin16_arg = (uint16_t)((long)angle % SIN16_2_PI);
         color.raw[i] = (byte)((MAX_INTENSITY>>1)*(1.0+(float)sin16(sin16_arg)/32767.0));
       }
-      set_half_strip(color, even_half);
+      set_strip(color);
       showStrip();
     }
 
     delay(TIME_INCREMENT);
-    check_timer(MS_ANIMATION_TIME_LONG);
+    break_on_timer_elapsed(MS_ANIMATION_TIME_LONG);
   }
   
   fade_out(MS_DELAY);
+}
+
+void set_strip(CRGB color) {
+  for (int i = 0; i < NUM_LEDS; i++) {
+    leds[i] = color;
+  }  
 }
 
 void set_half_strip(CRGB color, bool even) {
@@ -383,7 +413,9 @@ void set_half_strip(CRGB color, bool even) {
 }
 
 void set_strip_odd_half(CRGB color) {
-  for (int i = 1; i < NUM_LEDS; i=i+2) leds[i] = color;
+  for (int i = 1; i < NUM_LEDS; i=i+2) {
+    leds[i] = color;
+  }
 }
 
 
@@ -434,9 +466,9 @@ void auto_theater_chase_forward() {
   while(1) {
     theater_chase_forward (color, THEATER_CHASE_DELAY, THEATER_CHASE_COUNT, true);
     showStrip();
-    check_timer(MS_ANIMATION_TIME_SHORT);
+    break_on_timer_elapsed(MS_ANIMATION_TIME_SHORT);
   }
-  theater_chase_forward(color, THEATER_CHASE_DELAY, THEATER_CHASE_DELAY, false);
+  theater_chase_forward(color, THEATER_CHASE_DELAY, THEATER_CHASE_COUNT, false);
   auto_fade_out();
 }
 
@@ -444,14 +476,51 @@ void auto_theater_chase_backward() {
   CRGB color = get_random_simple_color();
   set_timer();
   while(1) {
-    theater_chase_backward(color, THEATER_CHASE_DELAY, THEATER_CHASE_DELAY, true);
+    theater_chase_backward(color, THEATER_CHASE_DELAY, THEATER_CHASE_COUNT, true);
     showStrip();
-    check_timer(MS_ANIMATION_TIME_SHORT);
+    break_on_timer_elapsed(MS_ANIMATION_TIME_SHORT);
   }
-  theater_chase_backward(color, THEATER_CHASE_DELAY, THEATER_CHASE_DELAY, false);
+  theater_chase_backward(color, THEATER_CHASE_DELAY, THEATER_CHASE_COUNT, false);
   auto_fade_out();
 }
 
+
+void theater_chase_forward(CRGB color, int ms_delay, int n, bool erase_last) {
+  for (int j=0; j<n; j++) {  //do n cycles of chasing
+    for (int q=0; q < 3; q++) {
+      for (int i=0; i < NUM_LEDS; i=i+3) {
+        set_pixel_color(i+q, color);    //turn every third pixel on
+      }
+      showStrip();
+     
+      delay(ms_delay);
+     
+      for (int i=0; i < NUM_LEDS; i=i+3) {
+        set_pixel_color(i+q, BLACK);        //turn every third pixel off
+      }
+    }
+  }
+}
+
+void theater_chase_backward(CRGB color, int ms_delay, int n, bool erase_last) {
+  for (int j=0; j<n; j++) {  //do n cycles of chasing
+    for (int q=2; q >= 0; q--) {
+      for (int i=0; i < NUM_LEDS; i=i+3) {
+        set_pixel_color(i+q, color);    //turn every third pixel on
+      }
+      showStrip();
+     
+      delay(ms_delay);
+     
+      for (int i=0; i < NUM_LEDS; i=i+3) {
+        set_pixel_color(i+q, BLACK);        //turn every third pixel off
+      }
+    }
+  }
+}
+
+
+/*
 void theater_chase_forward(CRGB color, int ms_delay, int n, bool erase_last) {
   int q = 0;
   for (int j = 0; j < n; j++, q++) {  
@@ -463,13 +532,13 @@ void theater_chase_forward(CRGB color, int ms_delay, int n, bool erase_last) {
     
     showStrip();
     delay(ms_delay);
-    
-    if (j == n-1 || !erase_last) break;
-    
+        
     fill_solid(leds, NUM_LEDS, BLACK);
   }
 }
+*/
 
+/*
 void theater_chase_backward(CRGB color, int ms_delay, int n, bool erase_last) {
   int q = n + THEATER_CHASE_INCR - 1;
   for (int j = 0; j < n; j++, q++) {  
@@ -486,6 +555,7 @@ void theater_chase_backward(CRGB color, int ms_delay, int n, bool erase_last) {
     fill_solid(leds, NUM_LEDS, BLACK);
   }
 }
+*/
 
 
 // ***************************************************
@@ -538,7 +608,7 @@ void auto_cylon_bounce() {
   while(1) {
     color = get_random_simple_color();
     CylonBounce(color.r, color.g, color.b, CYLON_EYE_SIZE, CYLON_SPEED_DELAY, CYLON_RETURN_DELAY);
-    check_timer(MS_ANIMATION_TIME_LONG);
+    break_on_timer_elapsed(MS_ANIMATION_TIME_LONG);
   }
   auto_fade_out();
 }
@@ -549,7 +619,7 @@ void auto_cylon_slow_bounce() {
   while(1) {
     color = get_random_simple_color();
     CylonBounce(color.r, color.g, color.b, CYLON_EYE_SIZE, CYLON_SPEED_DELAY*4, CYLON_RETURN_DELAY);
-    check_timer(MS_ANIMATION_TIME_EXTRA);
+    break_on_timer_elapsed(MS_ANIMATION_TIME_EXTRA);
   }
   auto_fade_out();
 }
@@ -593,7 +663,18 @@ void auto_KITT_in_and_out() {
     CRGB color = get_random_simple_color();
     OutsideToCenter(color.r, color.g, color.b, KITT_EYE_SIZE, KITT_SPEED_DELAY, KITT_RETURN_DELAY);    
     CenterToOutside(color.r, color.g, color.b, KITT_EYE_SIZE, KITT_SPEED_DELAY, KITT_RETURN_DELAY);
-    check_timer(MS_ANIMATION_TIME_LONG);
+    break_on_timer_elapsed(MS_ANIMATION_TIME_LONG);
+  }
+  auto_fade_out();
+}
+
+void auto_KITT_out_and_in() {
+  set_timer();
+  while(1) {
+    CRGB color = get_random_simple_color();
+    CenterToOutside(color.r, color.g, color.b, KITT_EYE_SIZE, KITT_SPEED_DELAY, KITT_RETURN_DELAY);
+    OutsideToCenter(color.r, color.g, color.b, KITT_EYE_SIZE, KITT_SPEED_DELAY, KITT_RETURN_DELAY);    
+    break_on_timer_elapsed(MS_ANIMATION_TIME_LONG);
   }
   auto_fade_out();
 }
@@ -604,10 +685,22 @@ void auto_KITT_in_and_out_slow() {
     CRGB color = get_random_simple_color();
     OutsideToCenter(color.r, color.g, color.b, KITT_EYE_SIZE, KITT_SPEED_DELAY*4, KITT_RETURN_DELAY);    
     CenterToOutside(color.r, color.g, color.b, KITT_EYE_SIZE, KITT_SPEED_DELAY*4, KITT_RETURN_DELAY);
-    check_timer(MS_ANIMATION_TIME_EXTRA);
+    break_on_timer_elapsed(MS_ANIMATION_TIME_EXTRA);
   }
   auto_fade_out();
 }
+
+void auto_KITT_out_and_in_slow() {
+  set_timer();
+  while(1) {
+    CRGB color = get_random_simple_color();
+    CenterToOutside(color.r, color.g, color.b, KITT_EYE_SIZE, KITT_SPEED_DELAY*4, KITT_RETURN_DELAY);
+    OutsideToCenter(color.r, color.g, color.b, KITT_EYE_SIZE, KITT_SPEED_DELAY*4, KITT_RETURN_DELAY);    
+    break_on_timer_elapsed(MS_ANIMATION_TIME_EXTRA);
+  }
+  auto_fade_out();
+}
+
 
 void CenterToOutside(byte red, byte green, byte blue, int EyeSize, int SpeedDelay, int ReturnDelay) {
   for(int i =((NUM_LEDS-EyeSize)/2); i>=0; i--) {
@@ -678,7 +771,7 @@ void auto_twinkle() {
     to_turn_off = (to_turn_off+1) % TWINKLE_LEDS;
 
     delay(TWINKLE_DELAY);    
-    check_timer(MS_ANIMATION_TIME_EXTRA);
+    break_on_timer_elapsed(MS_ANIMATION_TIME_EXTRA);
   }
   auto_fade_out();
 }
@@ -730,7 +823,7 @@ void auto_running_lights() {
     }
     showStrip();
     delay(RUNNING_LIGHTS_DELAY);
-    check_timer(MS_ANIMATION_TIME_EXTRA);
+    break_on_timer_elapsed(MS_ANIMATION_TIME_EXTRA);
   }
   auto_fade_out();
 }
@@ -751,7 +844,7 @@ void auto_changing_colors() {
     phase[0] += 0.1;
     phase[1] += 0.2;
     phase[2] += 0.3;
-    check_timer(MS_ANIMATION_TIME_EXTRA);
+    break_on_timer_elapsed(MS_ANIMATION_TIME_EXTRA);
   }
   auto_fade_out();
 }
@@ -768,6 +861,16 @@ void colorWipe(byte red, byte green, byte blue, int SpeedDelay) {
 
 // ***************************************************
 
+void auto_rainbow_cycle()
+{
+  set_timer();
+  while(1) {
+    rainbowCycle(RAINBOW_CYCLE_DELAY);
+    break_on_timer_elapsed(MS_ANIMATION_TIME_EXTRA);
+  }
+  auto_fade_out();
+}
+
 void rainbowCycle(int SpeedDelay) {
   byte *c;
   uint16_t i, j;
@@ -775,6 +878,9 @@ void rainbowCycle(int SpeedDelay) {
   for(j=0; j<256*5; j++) { // 5 cycles of all colors on wheel
     for(i=0; i< NUM_LEDS; i++) {
       c=Wheel(((i * 256 / NUM_LEDS) + j) & 255);
+      c[0] = c[0] >> SCALE_DOWN_SHIFT;
+      c[1] = c[1] >> SCALE_DOWN_SHIFT;
+      c[2] = c[2] >> SCALE_DOWN_SHIFT;
       setPixel(i, *c, *(c+1), *(c+2));
     }
     showStrip();
@@ -808,20 +914,27 @@ byte * Wheel(byte WheelPos) {
 
 // ***************************************************
 
+void auto_theater_chase_rainbow() {
+  theaterChaseRainbow(THEATER_CHASE_DELAY);
+}
+
 void theaterChaseRainbow(int SpeedDelay) {
   byte *c;
  
   for (int j=0; j < 256; j++) {     // cycle all 256 colors in the wheel
-    for (int q=0; q < 3; q++) {
-        for (int i=0; i < NUM_LEDS; i=i+3) {
+    for (int q=0; q < 4; q++) {
+        for (int i=0; i < NUM_LEDS; i=i+4) {
           c = Wheel( (i+j) % 255);
+          c[0] = c[0] >> SCALE_DOWN_SHIFT;
+          c[1] = c[1] >> SCALE_DOWN_SHIFT;
+          c[2] = c[2] >> SCALE_DOWN_SHIFT;
           setPixel(i+q, *c, *(c+1), *(c+2));    //turn every third pixel on
         }
         showStrip();
        
         delay(SpeedDelay);
        
-        for (int i=0; i < NUM_LEDS; i=i+3) {
+        for (int i=0; i < NUM_LEDS; i=i+4) {
           setPixel(i+q, 0,0,0);        //turn every third pixel off
         }
     }
@@ -834,15 +947,25 @@ void theaterChaseRainbow(int SpeedDelay) {
 void auto_fire() {
   set_timer();
   while(1) {
-    Fire(55,120,15);
-    check_timer(MS_ANIMATION_TIME_SHORT);
+    Fire(55,120,15, false);
+    break_on_timer_elapsed(MS_ANIMATION_TIME_SHORT);
   }
   auto_fade_out();
 }
 
+void auto_fire_reversed() {
+  set_timer();
+  while(1) {
+    Fire(55,120,15, true);
+    break_on_timer_elapsed(MS_ANIMATION_TIME_SHORT);
+  }
+  auto_fade_out();
+}
+
+
 // ***************************************************
 
-void Fire(int Cooling, int Sparking, int SpeedDelay) {
+void Fire(int Cooling, int Sparking, int SpeedDelay, bool reversed) {
   static byte heat[NUM_LEDS_BUFF_SIZE];
   int cooldown;
  
@@ -874,7 +997,12 @@ void Fire(int Cooling, int Sparking, int SpeedDelay) {
     setPixelHeatColor(j, heat[j] );
   }
 
-  showStrip();
+  if (reversed) {
+    show_strip_reversed();
+  }
+  else {
+    showStrip();      
+  }
   delay(SpeedDelay);
 }
 
@@ -904,7 +1032,7 @@ void auto_meteor_rain() {
   set_timer();
   while(1) {
     meteorRain(MAX_INTENSITY, MAX_INTENSITY, MAX_INTENSITY, 5, 64, true, 30, false);
-    check_timer(MS_ANIMATION_TIME_SHORT);
+    break_on_timer_elapsed(MS_ANIMATION_TIME_SHORT);
   }
 }
 
@@ -912,7 +1040,7 @@ void auto_meteor_rain_reversed() {
   set_timer();
   while(1) {
     meteorRain(MAX_INTENSITY, MAX_INTENSITY, MAX_INTENSITY, 5, 64, true, 30, true);
-    check_timer(MS_ANIMATION_TIME_SHORT);
+    break_on_timer_elapsed(MS_ANIMATION_TIME_SHORT);
   }  
 }
 
@@ -1621,7 +1749,7 @@ void auto_NewKITT() {
   set_timer();
   while(1) {
     NewKITT(color.r, color.g, color.b, KITT_EYE_SIZE, KITT_SPEED_DELAY, KITT_RETURN_DELAY);
-    check_timer();
+    break_on_timer_elapsed();
   }
 }
 
@@ -1631,7 +1759,7 @@ void auto_KITT_forth_and_back() {
     CRGB color = get_random_simple_color();
     LeftToRight(color.r, color.g, color.b, KITT_EYE_SIZE, KITT_SPEED_DELAY, KITT_RETURN_DELAY);    
     RightToLeft(color.r, color.g, color.b, KITT_EYE_SIZE, KITT_SPEED_DELAY, KITT_RETURN_DELAY);
-    check_timer();
+    break_on_timer_elapsed();
   }
 }
 
@@ -1687,7 +1815,7 @@ void theater_chase_forth_and_back(CRGB color, int ms_delay) {
   while(1) {
     theater_chase_forward (color, ms_delay, THEATER_CHASE_COUNT);
     theater_chase_backward_no_erase(color, ms_delay, THEATER_CHASE_COUNT);
-    check_timer();
+    break_on_timer_elapsed();
   }
 }
 
@@ -1696,7 +1824,7 @@ void theater_chase_back_and_forth(CRGB color, int ms_delay, int num_cycles) {
   while(1) {
     theater_chase_backward(color, ms_delay, THEATER_CHASE_COUNT);
     theater_chase_forward_no_erase (color, ms_delay, THEATER_CHASE_COUNT);
-    check_timer();
+    break_on_timer_elapsed();
   }
 }
 
